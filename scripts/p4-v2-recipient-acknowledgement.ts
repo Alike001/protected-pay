@@ -33,8 +33,11 @@ import {
 } from "./gate1-simulate-delegation.ts";
 import { authenticatePrivateEr, PRIVATE_ER_ORIGIN } from "./private-er-auth.ts";
 import {
+  deriveV21SettlementAddresses,
   deriveV2SettlementAddresses,
   V2_RECIPIENT,
+  V21_SETTLEMENT_PAYMENT_ID,
+  V21_SETTLEMENT_PAYMENT_LABEL,
   V2_SETTLEMENT_PAYMENT_ID,
   V2_SETTLEMENT_PAYMENT_LABEL,
 } from "./p4-v2-settlement-bootstrap.ts";
@@ -42,10 +45,21 @@ import {
 const DEFAULT_BASE_RPC_URL = "https://api.devnet.solana.com" as const;
 const BASE_RPC_URL = (process.env.SOLANA_RPC_URL ??
   DEFAULT_BASE_RPC_URL) as typeof DEFAULT_BASE_RPC_URL;
+const V21_MODE = process.argv.includes("--v21-settlement");
 const APPROVAL_FLAG =
-  "--approved-p4-v2-recipient-tee-acknowledgement-simulation";
-const SEND_APPROVAL_FLAG = "--approved-p4-v2-recipient-acknowledgement";
+  V21_MODE
+    ? "--approved-p4-v21-recipient-tee-acknowledgement-simulation"
+    : "--approved-p4-v2-recipient-tee-acknowledgement-simulation";
+const SEND_APPROVAL_FLAG = V21_MODE
+  ? "--approved-p4-v21-recipient-acknowledgement"
+  : "--approved-p4-v2-recipient-acknowledgement";
 const SEND_REQUESTED = process.argv.includes("--send");
+const PAYMENT_ID = V21_MODE
+  ? V21_SETTLEMENT_PAYMENT_ID
+  : V2_SETTLEMENT_PAYMENT_ID;
+const PAYMENT_LABEL = V21_MODE
+  ? V21_SETTLEMENT_PAYMENT_LABEL
+  : V2_SETTLEMENT_PAYMENT_LABEL;
 const PAYMENT_SIZE = 245;
 const DEPOSIT_SIZE = 98;
 const PERMISSION_SIZE = 567;
@@ -94,7 +108,9 @@ if (!keypairPath) {
   throw new Error("SOLANA_KEYPAIR_PATH must name the approved recipient signer");
 }
 
-const addresses = await deriveV2SettlementAddresses();
+const addresses = V21_MODE
+  ? await deriveV21SettlementAddresses()
+  : await deriveV2SettlementAddresses();
 const baseRpc = createSolanaRpc(BASE_RPC_URL);
 const baseState = await baseRpc
   .getMultipleAccounts(
@@ -211,7 +227,7 @@ const recipientDepositBefore = getDepositDecoder().decode(
 const now = BigInt(Math.floor(Date.now() / 1000));
 if (
   !bytesEqual(paymentBefore.discriminator, PAYMENT_DISCRIMINATOR) ||
-  !bytesEqual(paymentBefore.paymentId, V2_SETTLEMENT_PAYMENT_ID) ||
+  !bytesEqual(paymentBefore.paymentId, PAYMENT_ID) ||
   paymentBefore.sender !== AUTHORITY ||
   paymentBefore.recipient !== V2_RECIPIENT ||
   paymentBefore.tokenMint !== USDC_MINT ||
@@ -429,7 +445,7 @@ console.log(
       feePayer: V2_RECIPIENT,
       signer: V2_RECIPIENT,
       instruction: "acknowledge_payment",
-      paymentLabel: V2_SETTLEMENT_PAYMENT_LABEL,
+      paymentLabel: PAYMENT_LABEL,
       payment: addresses.payment,
       token: "Circle Devnet test USDC",
       amountMoved: "0",

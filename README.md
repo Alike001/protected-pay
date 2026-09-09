@@ -20,6 +20,8 @@ The first live version-2 atomic open-plus-schedule transaction finalized and mov
 
 The fresh version-2.1 Payment now passes sender-authenticated, signature-verified simulation of atomic private open plus a six-iteration Payment-only Crank schedule. The simulated 1 test-USDC escrow did not persist, both aggregate Deposits are absent from the scheduled instruction, protected arguments are absent from program logs, and unauthenticated reads remain denied. Live broadcast remains separately gated.
 
+The separately approved live version-2.1 open and six-call schedule finalized on the Private ER, followed immediately by a recipient-authenticated acknowledgement that also passed signed simulation before broadcast. The Payment is privately `Acknowledged`, 1 test USDC remains in its individual escrow, neither aggregate Deposit was exposed to the other party, and the next Crank observation must prove automatic settlement before recipient claim.
+
 ## Source layout
 
 - `programs/protected-pay`: clean-room Anchor program

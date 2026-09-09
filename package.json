@@ -76,6 +76,8 @@
     "p4:v21:send:atomic-open-schedule": "tsx scripts/p4-auth-simulate-private-open.ts --v21-settlement --atomic-schedule --approved-p4-v21-tee-auth-atomic-open-schedule-simulation --send --approved-p4-v21-atomic-open-schedule",
     "p4:v2:auth:simulate:recipient-acknowledgement": "tsx scripts/p4-v2-recipient-acknowledgement.ts --approved-p4-v2-recipient-tee-acknowledgement-simulation",
     "p4:v2:send:recipient-acknowledgement": "tsx scripts/p4-v2-recipient-acknowledgement.ts --approved-p4-v2-recipient-tee-acknowledgement-simulation --send --approved-p4-v2-recipient-acknowledgement",
+    "p4:v21:auth:simulate:recipient-acknowledgement": "tsx scripts/p4-v2-recipient-acknowledgement.ts --v21-settlement --approved-p4-v21-recipient-tee-acknowledgement-simulation",
+    "p4:v21:send:recipient-acknowledgement": "tsx scripts/p4-v2-recipient-acknowledgement.ts --v21-settlement --approved-p4-v21-recipient-tee-acknowledgement-simulation --send --approved-p4-v21-recipient-acknowledgement",
     "p4:v21:preflight:stalled-recovery": "tsx scripts/p4-v21-recover-stalled-payment.ts",
     "p4:v21:auth:simulate:stalled-recovery": "tsx scripts/p4-v21-recover-stalled-payment.ts --approved-p4-v21-tee-auth-stalled-recovery-simulation",
     "p4:v21:send:stalled-recovery": "tsx scripts/p4-v21-recover-stalled-payment.ts --approved-p4-v21-tee-auth-stalled-recovery-simulation --send --approved-p4-v21-stalled-payment-recovery",

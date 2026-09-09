@@ -1431,3 +1431,56 @@ Transaction broadcast: false
 ```
 
 This proves the corrected private-open and scheduling transaction is valid without committing the 1 test-USDC internal balance change or registering the Crank task. A separate explicit approval is required to authenticate again, build fresh signed bytes, repeat signature-verified simulation, and broadcast the atomic transaction to the Private ER. Recipient acknowledgement will be prepared immediately afterward but remains separately gated.
+
+## Version-2.1 live open, schedule, and recipient acknowledgement
+
+One explicit approval covered the time-sensitive sender broadcast and the recipient's immediate acknowledgement simulation plus broadcast. Before starting the live clock, the recipient runner was isolated under version-2.1-specific fixture and approval flags, TypeScript passed, and both local signer files were checked to resolve to the exact sender and recipient addresses.
+
+The sender authenticated with a fresh challenge, repeated signature-verified simulation successfully, and submitted the same signed 494-byte transaction. Atomic `open_payment` plus `schedule_payment` finalized on the Private ER, debiting 1 test USDC from the sender's private available accounting into the individual Payment escrow and registering six Payment-only Crank executions.
+
+```text
+Sender identity: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Sender transaction: 3Bjghwn3tehG4v9eQBAxovfXn5P7rs8bFEfs58fqQ6BXifqRoUFKrmvoMcfFXqAy8n3PHz5zEz9Qua8hFSYyHGUo
+Fresh signed simulation slot: 300991577
+Finalized Private ER slot: 300991605
+Instructions: open_payment, schedule_payment
+Payment: 71t8qrKg2cFVSceBEFL4RtmKrfhRcMWzyvq4yh4PwikZ
+Private escrow: 1.000000 test USDC
+Sender available: 3.000000 -> 2.000000 test USDC
+Sender locked: 0
+Sender payment nonce: 3 -> 4
+Task ID: 1788982958472
+Created at: 1788982960
+Settle after: 1788983020
+Expires at: 1788983260
+Interval / iterations: 60,000 milliseconds / 6
+Scheduled instruction: advance_payment
+Scheduled accounts: Payment only
+SPL token movement: none; private accounting only
+Protected arguments found in logs: false
+Public delegated snapshots changed: false
+Unauthenticated protected reads: all null
+Hardware attestation independently verified: false
+```
+
+The recipient then authenticated immediately. The permission boundary exposed the shared Payment and the recipient's own Deposit while continuing to deny the sender Deposit. A fresh 253-byte acknowledgement passed signature-verified simulation, preserving every Payment term except `Created -> Acknowledged`, then the exact bytes finalized.
+
+```text
+Recipient identity: HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr
+Recipient transaction: 4VK5zGusKbr96VtiSamZ8J9vVngHgwiadMDBFza25gCVmqQ4ej1pTdq3NPdxKxVoCLYCEw9zxBHoqu5bgxTgaiKL
+Fresh signed simulation slot: 300991902
+Finalized Private ER slot: 300991928
+Instruction: acknowledge_payment
+Payment status: Created -> Acknowledged
+Payment task ID: 1788982958472
+Payment amount and terms changed: false
+Sender Deposit visible to recipient: false
+Recipient Deposit included in instruction: false
+Sender Deposit included in instruction: false
+SPL token movement: none
+Protected data found in logs: false
+Unauthenticated protected reads: all null
+Hardware attestation independently verified: false
+```
+
+The Payment is now privately `Acknowledged` with its 1 test-USDC liability still held by the shared Payment. No wallet needs to remain online: the next due Crank execution should advance it to `Settled`. Verifying that private transition requires a fresh, separately approved recipient authentication; claiming the settled liability requires another separately approved signed transaction.
