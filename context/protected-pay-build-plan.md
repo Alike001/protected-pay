@@ -1,6 +1,6 @@
 # Plan: Protected Pay Risk-First Hackathon Build
 
-Status: active implementation plan. G0–G3 passed with narrowed privacy language. Phase 4 is complete: version 2.1 is deployed, both corrected live paths pass end to end, retry safety passes, and the corrected Payment passed its field-by-field privacy audit through finalized public redacted commitment. The live Payment liability stranded by the original five-call cadence was recovered without loss. The next work is approval-count measurement and the product interface, followed by final end-to-end evidence and submission.
+Status: active implementation plan. G0–G3 and Phase 4 are complete with narrowed privacy language. Version 2.1 is deployed, both corrected live paths pass end to end, retry safety passes, and the corrected Payment passed its field-by-field privacy audit through finalized public redacted commitment. Funded-sender packaging is measured at two transaction approvals plus one cold-session authentication message. The next work is the product interface, followed by final end-to-end evidence and submission.
 
 ## Inputs
 
@@ -136,7 +136,7 @@ The first three technical risks from the accepted specification map directly to 
 7. **Complete on Private ER:** atomic `advance_payment` plus `claim_payment` recovery finalized, restored the sender from 2 to 3 test USDC available, redacted the Payment terms behind the verified terminal commitment, and preserved the public/privacy boundary.
 8. **Complete on Private ER:** the corrected settlement path pays the recipient, while the unattended path reached `Expired` at call six and its sender-only claim restored 1 test USDC, cleared escrow, redacted sensitive fields, and preserved the privacy boundary. Signed retry simulations prove repeated `advance_payment` is a byte-for-byte no-op and repeated `claim_payment` fails with `PaymentRedacted (6022)` without a second credit.
 9. **Complete:** the 320-byte Payment-only closeout passed signature-verified simulation and finalized at Private ER slot `301184653` and Devnet slot `495841058`. Public verification proves the Payment was redacted before commitment, its terminal commitment matches, its delegation record/metadata closed, both aggregate Deposits and the Payment Permission remain delegated, vault collateral remains 3 test USDC, and neither original amount nor memo hash appears in public logs or state.
-10. Measure the funded-user approval count and package the normal flow as simply as the infrastructure permits.
+10. **Complete:** the four public Payment setup/delegation instructions fit in one 797-byte transaction and simulated successfully with 141,907 compute units. Atomic private open/schedule is 494 bytes and already proven live. A funded sender therefore sees three cold-session wallet prompts—public setup transaction, off-chain TEE authentication message, private open transaction—or two prompts while the authentication session is valid. Do not claim one-click or one-approval sending.
 11. Build the product UI: fund, send, share, acknowledge, countdown, Undo, activity, withdrawal, recovery, plus a separate judge-proof view.
 12. Run all three end-to-end stories from fresh state, perform the final verification audit, deploy the web client, record the product-first video, confirm the authenticated submission deadline, and submit.
 

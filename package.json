@@ -101,6 +101,7 @@
     "p4:v21:auth:simulate:closeout": "tsx scripts/p4-v21-auth-simulate-closeout.ts --approved-p4-v21-expiry-tee-auth-closeout-simulation",
     "p4:v21:send:closeout": "tsx scripts/p4-v21-auth-simulate-closeout.ts --approved-p4-v21-expiry-tee-auth-closeout-simulation --send --approved-p4-v21-expiry-terminal-closeout-broadcast",
     "p4:v21:verify:closeout": "tsx scripts/p4-v21-verify-closeout.ts",
+    "p4:measure:approval-count": "tsx scripts/p4-measure-approval-count.ts",
     "p4:legacy:diagnose:expired-schedule": "tsx scripts/p4-auth-simulate-expired-schedule.ts --approved-p4-tee-auth-expired-schedule-simulation",
     "p4:auth:simulate:expired-cancel": "tsx scripts/p4-auth-simulate-expired-cancel.ts --approved-p4-tee-auth-expired-cancel-simulation",
     "p4:send:expired-cancel": "tsx scripts/p4-auth-simulate-expired-cancel.ts --approved-p4-tee-auth-expired-cancel-simulation --send --approved-p4-expired-payment-cancellation",
