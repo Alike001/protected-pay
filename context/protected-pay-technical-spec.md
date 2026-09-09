@@ -4,7 +4,7 @@ Status: implementation-ready product specification with explicit feasibility gat
 
 ## Objective
 
-Build a working Solana application that lets a funded user create a private pending USDC payment, lets the intended recipient acknowledge it, lets the sender cancel it before final settlement, and automatically settles or expires it through MagicBlock execution.
+Build a working Solana application that lets a funded user create a private pending USDC payment, lets the intended recipient acknowledge it, lets the sender cancel it before final settlement, and lets MagicBlock automatically determine settlement or expiry while owner-only claims protect aggregate private balances.
 
 The implementation must make MagicBlock essential:
 
@@ -151,7 +151,7 @@ Seeds:
 
 The token account's mint must equal `Config.allowed_mint`, and its authority must equal the vault PDA.
 
-The Vault also records `total_liability: u64`. It increases only when collateral is deposited and decreases only when collateral is withdrawn. Internal payment transitions move liability between Deposit accounts without changing this aggregate. The vault token balance must always be greater than or equal to this value; unsolicited token transfers may make the token balance larger.
+The Vault also records `total_liability: u64`. It increases only when collateral is deposited and decreases only when collateral is withdrawn. Internal payment transitions move liability between Deposit accounts and individual Payment escrow records without changing this aggregate. The vault token balance must always be greater than or equal to this value; unsolicited token transfers may make the token balance larger.
 
 ### `Deposit`
 
@@ -174,6 +174,8 @@ Required fields:
 - `version: u8`
 
 The account is created and funded on the base layer, permissioned to its owner, and delegated for private payment operations. It must be committed and undelegated before a base-layer withdrawal.
+
+The `locked` field remains available for isolated accounting operations and compatibility evidence, but version-2 protected payments do not leave their value in this aggregate field. Their pending liability lives in the individual shared Payment so automation never needs access to an owner-only aggregate Deposit.
 
 ### `Payment`
 
@@ -204,6 +206,8 @@ Required private fields:
 
 The payment shell must exist and be delegated before sensitive fields are written inside the Private ER. Pending payment accounts must not be committed to the public base layer with unsanitized sensitive fields.
 
+For version-2 payments, nonzero `amount` is also the unclaimed per-payment escrow liability. Opening debits the sender Deposit; settlement or expiry changes only Payment status; an authorized claim credits only the claimant's own Deposit and then seals/redacts the Payment. This reuses the existing fixed account layout and keeps the serialized Payment size at 245 bytes.
+
 ### `PaymentStatus`
 
 ```text
@@ -227,6 +231,9 @@ Created
 Acknowledged
   ├── sender cancels before actual settle ─► Cancelled
   └── safety window has ended ─────────────► Settled
+
+Settled ─── recipient claims ──────────────► sealed receipt
+Expired ─── sender claims ─────────────────► sealed receipt
 ```
 
 Important rules:
@@ -286,7 +293,7 @@ Important rules:
 - Requires sender and recipient to differ.
 - Requires `sender.available >= amount` using checked arithmetic.
 - Initializes the private Payment fields and copied deadlines.
-- Moves `amount` from sender `available` to sender `locked`.
+- Debits `amount` from sender `available`; the same amount becomes liability held by the individual Payment escrow.
 - Schedules the payment's time-transition task or records the data needed for the associated Crank call.
 - Rejects reuse of an initialized Payment shell or payment ID.
 
@@ -302,19 +309,26 @@ Important rules:
 
 - Requires a signer equal to `Payment.sender`.
 - Requires status `Created` or `Acknowledged`.
-- Moves `amount` from sender `locked` back to sender `available` exactly once.
-- Sets status to `Cancelled`.
+- Credits the Payment escrow amount back to sender `available` exactly once.
+- Sets status to `Cancelled`, commits the terminal terms, and redacts the paid-out private fields.
 - Does not require a scheduled task to be removed for safety; later task calls must no-op against the terminal state.
 
 #### `advance_payment()`
 
 - Does not accept a recipient, amount, or deadline argument.
 - Reads every payment term from the stored Payment account.
-- If `Acknowledged` and `now >= settle_after`, settles.
-- If `Created` and `now >= expires_at`, expires and refunds.
+- If `Acknowledged` and `now >= settle_after`, marks the Payment `Settled`.
+- If `Created` and `now >= expires_at`, marks the Payment `Expired`.
 - Otherwise returns success without moving value, allowing safe repeated Crank execution.
-- A settled transition subtracts sender `locked` and adds recipient `available` exactly once.
-- An expired transition subtracts sender `locked` and returns it to sender `available` exactly once.
+- Its only writable financial account is the shared Payment; it never reads or writes either aggregate Deposit.
+
+#### `claim_payment()`
+
+- Requires `Settled` with the recipient signer, or `Expired` with the sender signer.
+- Requires the claimant's exact mint-bound Deposit PDA.
+- Credits the Payment escrow amount to only that claimant's `available` balance.
+- Creates the terminal commitment and redacts the paid-out amount, recipient, memo hash, deadlines, and task ID atomically.
+- Rejects wrong claimants, pre-terminal claims, legacy Payment versions, and replay.
 
 #### `set_automation_paused(paused)`
 
@@ -327,7 +341,8 @@ Important rules:
 #### `redact_terminal_payment()`
 
 - May run only on a terminal payment.
-- Replaces private recipient, amount, and memo fields with zeroed values after creating a commitment hash sufficient for integrity proof.
+- Cannot erase a terminal Payment while escrow remains unclaimed.
+- Paid-out cancellation and claim paths create the integrity commitment and redact private fields atomically.
 - Is required before committing or undelegating a Payment account to public Solana.
 - Cannot alter Deposit balances or terminal status.
 
@@ -335,14 +350,14 @@ Important rules:
 
 The preferred hackathon schedule is one idempotent task per payment that invokes `advance_payment` every 60 seconds for five iterations:
 
-- iteration 1 can settle an acknowledged payment after the safety window;
+- iteration 1 can mark an acknowledged payment settled after the safety window;
 - iterations 2–4 safely retry or no-op;
-- iteration 5 expires an unacknowledged payment at the claim deadline;
+- iteration 5 marks an unacknowledged payment expired at the claim deadline;
 - all iterations after a terminal state return without moving funds.
 
 If the current Crank interface supports reliable one-shot tasks at absolute deadlines, two one-shot calls may replace the recurring schedule. Either implementation must satisfy the same state-based acceptance criteria.
 
-The Crank never supplies or changes financial terms. The target instruction must remain correct if execution is early, late, duplicated, or invoked manually.
+The Crank never supplies or changes financial terms. The scheduled target contains only the shared Payment account and must remain correct if execution is early, late, duplicated, or invoked manually. The entitled party later claims into only their own private Deposit.
 
 ## Access And Authorization Model
 
@@ -350,7 +365,7 @@ The Crank never supplies or changes financial terms. The target instruction must
 
 - A Deposit permission group contains its owner.
 - The owner authenticates to the Private ER endpoint by signing the supported challenge.
-- Other users may credit a recipient through program logic but cannot debit the recipient's balance.
+- No other user or Crank task receives read access to this aggregate account. A claimant authenticates as the Deposit owner before crediting terminal Payment escrow into it.
 
 ### Payment privacy
 
@@ -371,6 +386,7 @@ Private read membership does not grant financial authority. The program enforces
 | Acknowledge | Exact stored recipient |
 | Cancel | Exact stored sender |
 | Advance | Permissionless deterministic caller / Crank |
+| Claim settled or expired escrow | Stored recipient or sender, respectively |
 | Withdraw | Exact Deposit owner |
 | Change configuration | Config authority only |
 
@@ -489,7 +505,7 @@ Browser countdowns are display aids only. Every mutation and status reconciliati
 
 ### Correct payment
 
-Given funded sender and initialized recipient Deposits, when the sender opens a payment and the intended recipient acknowledges it, then a Crank call after 60 seconds changes it to `Settled`, subtracts the sender's locked amount, and credits the recipient exactly once.
+Given funded sender and initialized recipient Deposits, when the sender opens a payment and the intended recipient acknowledges it, then a Crank call after 60 seconds changes only the shared Payment to `Settled`. The recipient can then claim the exact escrow amount into their own Deposit exactly once.
 
 ### Mistaken payment
 
@@ -497,14 +513,14 @@ Given a `Created` or `Acknowledged` payment, when the sender cancels it before s
 
 ### Abandoned payment
 
-Given an unacknowledged payment, when the 300-second claim deadline passes, then Crank changes it to `Expired`, returns the exact amount to the sender, and rejects later acknowledgement.
+Given an unacknowledged payment, when the 300-second claim deadline passes, then Crank changes only the shared Payment to `Expired` and rejects later acknowledgement. The sender can then claim the exact escrow amount into their own Deposit exactly once.
 
 ### Authorization
 
 - A third wallet cannot acknowledge, cancel, withdraw, or change payment terms.
 - The recipient cannot cancel.
 - The sender cannot acknowledge on the recipient's behalf.
-- Crank can invoke only deterministic time transitions.
+- Crank can invoke only deterministic time transitions and never receives either party's aggregate Deposit.
 
 ### Privacy
 
@@ -558,7 +574,7 @@ Crank successfully calls `advance_payment` against the delegated private account
 
 After initial funding/authentication, creating a protected payment can be packaged into one normal approval or a flow simple enough to explain honestly. If multiple unavoidable approvals remain, the product copy must not claim one-tap sending.
 
-Failure of Gate 1 or Gate 2 blocks the product. Failure of Gate 3 removes the privacy claim and makes the hackathon fit substantially weaker. Failure of Gate 4 removes automatic recovery and requires immediate architecture review. Gate 5 affects experience and pitch but not financial correctness.
+Failure of Gate 1 or Gate 2 blocks the product. Failure of Gate 3 removes the privacy claim and makes the hackathon fit substantially weaker. Failure of Gate 4 removes automatic outcome resolution and requires immediate architecture review. Gate 5 affects experience and pitch but not financial correctness.
 
 ## Stories Needed
 
@@ -594,7 +610,7 @@ Failure of Gate 1 or Gate 2 blocks the product. Failure of Gate 3 removes the pr
 | Private ER prize alignment | Strong | Pending financial state is genuinely permissioned rather than privacy being a label. |
 | Understandable in 30 seconds | Pass | "Undo for USDC payments before they become final." |
 | Low friction | Conditional | Must prove the post-funding payment approval count in Gate 5. |
-| Product, not demo | Pass if full lifecycle ships | Send, acknowledge, undo, automatic settle/expiry, activity, withdrawal, and recovery are user workflows. |
+| Product, not demo | Pass if full lifecycle ships | Send, acknowledge, undo, automatic settle/expiry decisions, owner claims, activity, withdrawal, and recovery are user workflows. |
 
 ## Source References
 

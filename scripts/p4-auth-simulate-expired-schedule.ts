@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
 
+// Historical version-1 diagnostic retained for the recorded permission failure.
+// The terminal live fixture cannot be replayed; version-2 lifecycle runners use
+// fresh Payment IDs after the corrected program is deployed.
+
 import {
   appendTransactionMessageInstructions,
   assertIsTransactionWithBlockhashLifetime,
@@ -328,8 +332,6 @@ const instructions = [
     magicProgram: MAGIC_PROGRAM,
     payer: authentication.signerClient.identity,
     payment,
-    senderDeposit: sender.deposit,
-    recipientDeposit,
     program: PROGRAM_ID,
     paymentId: PAYMENT_ID,
     taskId,

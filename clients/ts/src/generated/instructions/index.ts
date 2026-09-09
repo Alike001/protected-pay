@@ -10,6 +10,7 @@ export * from "./acknowledgePayment";
 export * from "./advanceCrankProbe";
 export * from "./advancePayment";
 export * from "./cancelPayment";
+export * from "./claimPayment";
 export * from "./commitAndUndelegateCrankProbe";
 export * from "./commitAndUndelegateDeposit";
 export * from "./commitAndUndelegatePayment";

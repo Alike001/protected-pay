@@ -56,6 +56,7 @@ import {
   getAdvanceCrankProbeInstruction,
   getAdvancePaymentInstruction,
   getCancelPaymentInstruction,
+  getClaimPaymentInstruction,
   getCommitAndUndelegateCrankProbeInstructionAsync,
   getCommitAndUndelegateDepositInstruction,
   getCommitAndUndelegatePaymentInstruction,
@@ -85,6 +86,7 @@ import {
   parseAdvanceCrankProbeInstruction,
   parseAdvancePaymentInstruction,
   parseCancelPaymentInstruction,
+  parseClaimPaymentInstruction,
   parseCommitAndUndelegateCrankProbeInstruction,
   parseCommitAndUndelegateDepositInstruction,
   parseCommitAndUndelegatePaymentInstruction,
@@ -114,6 +116,7 @@ import {
   type AdvanceCrankProbeInput,
   type AdvancePaymentInput,
   type CancelPaymentInput,
+  type ClaimPaymentInput,
   type CommitAndUndelegateCrankProbeAsyncInput,
   type CommitAndUndelegateDepositInput,
   type CommitAndUndelegatePaymentInput,
@@ -136,6 +139,7 @@ import {
   type ParsedAdvanceCrankProbeInstruction,
   type ParsedAdvancePaymentInstruction,
   type ParsedCancelPaymentInstruction,
+  type ParsedClaimPaymentInstruction,
   type ParsedCommitAndUndelegateCrankProbeInstruction,
   type ParsedCommitAndUndelegateDepositInstruction,
   type ParsedCommitAndUndelegatePaymentInstruction,
@@ -269,6 +273,7 @@ export enum ProtectedPayInstruction {
   AdvanceCrankProbe,
   AdvancePayment,
   CancelPayment,
+  ClaimPayment,
   CommitAndUndelegateCrankProbe,
   CommitAndUndelegateDeposit,
   CommitAndUndelegatePayment,
@@ -343,6 +348,17 @@ export function identifyProtectedPayInstruction(
     )
   ) {
     return ProtectedPayInstruction.CancelPayment;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([69, 112, 250, 167, 37, 156, 200, 30]),
+      ),
+      0,
+    )
+  ) {
+    return ProtectedPayInstruction.ClaimPayment;
   }
   if (
     containsBytes(
@@ -641,6 +657,9 @@ export type ParsedProtectedPayInstruction<
       instructionType: ProtectedPayInstruction.CancelPayment;
     } & ParsedCancelPaymentInstruction<TProgram>)
   | ({
+      instructionType: ProtectedPayInstruction.ClaimPayment;
+    } & ParsedClaimPaymentInstruction<TProgram>)
+  | ({
       instructionType: ProtectedPayInstruction.CommitAndUndelegateCrankProbe;
     } & ParsedCommitAndUndelegateCrankProbeInstruction<TProgram>)
   | ({
@@ -747,6 +766,13 @@ export function parseProtectedPayInstruction<TProgram extends string>(
       return {
         instructionType: ProtectedPayInstruction.CancelPayment,
         ...parseCancelPaymentInstruction(instruction),
+      };
+    }
+    case ProtectedPayInstruction.ClaimPayment: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ProtectedPayInstruction.ClaimPayment,
+        ...parseClaimPaymentInstruction(instruction),
       };
     }
     case ProtectedPayInstruction.CommitAndUndelegateCrankProbe: {
@@ -974,6 +1000,9 @@ export type ProtectedPayPluginInstructions = {
     input: CancelPaymentInput,
   ) => ReturnType<typeof getCancelPaymentInstruction> &
     SelfPlanAndSendFunctions;
+  claimPayment: (
+    input: ClaimPaymentInput,
+  ) => ReturnType<typeof getClaimPaymentInstruction> & SelfPlanAndSendFunctions;
   commitAndUndelegateCrankProbe: (
     input: MakeOptional<CommitAndUndelegateCrankProbeAsyncInput, "payer">,
   ) => ReturnType<typeof getCommitAndUndelegateCrankProbeInstructionAsync> &
@@ -1135,6 +1164,11 @@ export function protectedPayProgram() {
             addSelfPlanAndSendFunctions(
               client,
               getCancelPaymentInstruction(input),
+            ),
+          claimPayment: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getClaimPaymentInstruction(input),
             ),
           commitAndUndelegateCrankProbe: (input) =>
             addSelfPlanAndSendFunctions(

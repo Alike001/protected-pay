@@ -4,18 +4,18 @@ Date: 2026-09-09
 
 ## Result
 
-**LOCAL PASS / LIVE UPGRADE PASS / PAYMENT FLOW PENDING**
+**V1 LIVE RECOVERY PASS / V2 LOCAL PERMISSION-TOPOLOGY PASS / V2 DEPLOYMENT PENDING**
 
 The Anchor program now implements the complete protected-payment lifecycle:
 
 - public amount-free Payment preparation;
 - sender/recipient private permission membership and delegation;
-- private open with exact balance locking and copied immutable deadlines;
+- private open with exact per-payment escrow and copied immutable deadlines;
 - recipient-only acknowledgement;
 - sender-only cancellation and recovery;
 - permissionless deterministic settlement or expiry;
 - a fixed five-iteration, 60-second MagicBlock Crank schedule;
-- terminal redaction before Payment commitment/undelegation;
+- owner-only settlement/expiry claims followed by atomic terminal redaction;
 - authority-controlled timing updates that affect only future payments.
 
 The older `CrankProbe` remains temporarily so the already-recorded G2/G3 evidence and verification scripts stay reproducible. It is not the product workflow.
@@ -24,7 +24,7 @@ The older `CrankProbe` remains temporarily so the already-recorded G2/G3 evidenc
 
 ```text
 cargo test -p protected-pay --lib --locked
-PASS: 21 passed, 0 failed
+PASS: 22 passed, 0 failed
 
 NO_DNA=1 npm run idl
 PASS
@@ -47,17 +47,17 @@ NO_DNA=1 RUSTUP_TOOLCHAIN=1.89.0-sbpf-solana-v1.53 \
   --features no-log-ix-name,no-idl \
   --manifest-path programs/protected-pay/Cargo.toml -- --locked
 
-PASS: target/deploy/protected_pay.so (635,136 bytes)
-SHA-256: e12298b94a74a7113cde7cd0334fc0e6145e6482eda44ab9a336f0a39286d14a
+PASS: target/deploy/protected_pay.so (633,568 bytes)
+SHA-256: 5b2f04b8b347a85e5f7f03dc9305709aaaab7fb538738d348919a8811756d6f5
 ```
 
 ## Covered invariants
 
-- opening moves one exact amount from available to locked;
+- opening moves one exact amount from the sender's aggregate Deposit into the individual Payment escrow;
 - acknowledgement changes no financial terms;
 - acknowledgement at the expiry boundary is rejected;
-- cancellation and expiry return the locked amount exactly once;
-- settlement debits sender locked and credits recipient available exactly once;
+- cancellation returns and seals the Payment escrow exactly once;
+- settlement and expiry mutate only Payment; the entitled owner claims into only their own Deposit exactly once;
 - terminal Crank retries are no-ops;
 - cancel-versus-settle races produce one terminal winner;
 - wrong actors and substituted Deposit relationships fail;
@@ -69,11 +69,12 @@ SHA-256: e12298b94a74a7113cde7cd0334fc0e6145e6482eda44ab9a336f0a39286d14a
 
 Before Phase 5:
 
-1. create and delegate a real Payment shell and recipient Deposit/permissions;
-2. execute open, acknowledge, cancel, settle, and expiry through the authenticated Private ER;
-3. prove a real five-run Crank task advances a Payment with both users offline;
-4. re-run the unauthorized-read and public metadata audit for the Payment layout;
-5. redact, commit/undelegate, and verify final public state before withdrawal.
+1. upgrade the Devnet program to the locally verified version-2 state machine;
+2. create and delegate fresh version-2 Payment shells;
+3. execute open, acknowledge, cancel, settle, expiry, and owner-only claim through the authenticated Private ER;
+4. prove a real five-run Crank task advances only Payment with both users offline;
+5. re-run the unauthorized-read and public metadata audit for the Payment layout;
+6. commit/undelegate a sealed Payment and verify final public state before withdrawal.
 
 ## Read-only Devnet upgrade preflight
 
@@ -489,3 +490,53 @@ Hardware attestation independently verified: false
 ```
 
 The live recovery is complete. The three real test USDC remain fully collateralized in the public vault while all three are once again available to the sender in private accounting. This proves the manual recovery path; it does not resolve the separate Crank permission-topology blocker documented above.
+
+## Version-2 per-Payment escrow correction
+
+Current MagicBlock documentation was rechecked through Context7 on 2026-09-09. It confirms that permission to a delegated private account currently implies read access; a separate read/write split may be added later. Therefore, allowing a sender-authenticated schedule to touch the recipient's aggregate Deposit would weaken the privacy claim and remains rejected.
+
+The version-2 state machine instead uses the existing nonzero `Payment.amount` as the individual payment's unclaimed escrow liability:
+
+```text
+Open:       sender Deposit available -> Payment escrow
+Crank:      Payment Created/Acknowledged -> Expired/Settled
+Claim:      Payment escrow -> entitled owner's Deposit available
+Cancel:     Payment escrow -> sender Deposit available, atomically
+After pay:  terminal commitment created; private fields zeroed
+```
+
+The Crank target now has exactly one writable financial account: the shared Payment. Settlement and expiry claims contain only the shared Payment and the claimant's own Deposit. No flow grants either party read access to the other's aggregate balance. Newly prepared payments are version 2; all version-1 payments are rejected by the new escrow methods to prevent legacy state from being interpreted or credited twice.
+
+The fixed Payment layout remains 245 bytes, so no Payment account reallocation was introduced. Local verification produced:
+
+```text
+Rust unit tests: 22 passed, 0 failed
+Clippy with warnings denied: passed
+Anchor IDL build: passed
+Codama TypeScript generation: passed
+TypeScript check: passed
+Optimized SBF build: passed
+Optimized binary size: 633,568 bytes
+Optimized binary SHA-256: 5b2f04b8b347a85e5f7f03dc9305709aaaab7fb538738d348919a8811756d6f5
+Generated advance_payment writable accounts: Payment only
+Generated claim_payment accounts: claimant, Payment, claimant Deposit
+Devnet upgrade: not attempted
+Transaction signatures: none
+```
+
+This resolves the permission topology in code and local tests, not yet on the live deployment. It also narrows the automation promise honestly: Crank determines the terminal outcome while users are offline; the entitled owner later claims the escrow into their private available balance. Manual Undo still returns the sender's escrow immediately in one sender-authorized operation.
+
+A read-only Devnet upgrade preflight confirmed that the new binary fits inside the existing ProgramData allocation:
+
+```text
+Program: w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk
+ProgramData: BXX67CiW14MVLku97gfUm4muQKwUc7uDsSrbC9qsYRAj
+Upgrade authority: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Current allocation: 635,136 bytes
+Version-2 binary: 633,568 bytes
+Remaining allocation headroom: 1,568 bytes
+Permanent extension required: no
+Authority balance: 6.72221852 SOL
+Signature requested: no
+Transaction broadcast: no
+```

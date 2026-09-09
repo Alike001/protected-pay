@@ -68,6 +68,12 @@ export const PROTECTED_PAY_ERROR__TASK_ALREADY_SCHEDULED = 0x1788; // 6024
 export const PROTECTED_PAY_ERROR__INVALID_ACCOUNT_OWNER = 0x1789; // 6025
 /** InvalidRecipient: Recipient address is invalid */
 export const PROTECTED_PAY_ERROR__INVALID_RECIPIENT = 0x178a; // 6026
+/** UnsupportedPaymentVersion: Payment account uses an unsupported state-machine version */
+export const PROTECTED_PAY_ERROR__UNSUPPORTED_PAYMENT_VERSION = 0x178b; // 6027
+/** PaymentFundsUnclaimed: Terminal payment funds must be claimed before redaction */
+export const PROTECTED_PAY_ERROR__PAYMENT_FUNDS_UNCLAIMED = 0x178c; // 6028
+/** PaymentNotClaimable: Payment is not ready for this claimant */
+export const PROTECTED_PAY_ERROR__PAYMENT_NOT_CLAIMABLE = 0x178d; // 6029
 
 export type ProtectedPayError =
   | typeof PROTECTED_PAY_ERROR__AUTOMATION_TOO_EARLY
@@ -87,6 +93,8 @@ export type ProtectedPayError =
   | typeof PROTECTED_PAY_ERROR__PAYMENT_ALREADY_OPEN
   | typeof PROTECTED_PAY_ERROR__PAYMENT_DEPOSIT_MISMATCH
   | typeof PROTECTED_PAY_ERROR__PAYMENT_EXPIRED
+  | typeof PROTECTED_PAY_ERROR__PAYMENT_FUNDS_UNCLAIMED
+  | typeof PROTECTED_PAY_ERROR__PAYMENT_NOT_CLAIMABLE
   | typeof PROTECTED_PAY_ERROR__PAYMENT_NOT_OPEN
   | typeof PROTECTED_PAY_ERROR__PAYMENT_NOT_TERMINAL
   | typeof PROTECTED_PAY_ERROR__PAYMENT_REDACTED
@@ -94,6 +102,7 @@ export type ProtectedPayError =
   | typeof PROTECTED_PAY_ERROR__SAME_PARTY
   | typeof PROTECTED_PAY_ERROR__TASK_ALREADY_SCHEDULED
   | typeof PROTECTED_PAY_ERROR__UNAUTHORIZED
+  | typeof PROTECTED_PAY_ERROR__UNSUPPORTED_PAYMENT_VERSION
   | typeof PROTECTED_PAY_ERROR__WRONG_MINT
   | typeof PROTECTED_PAY_ERROR__WRONG_TOKEN_PROGRAM
   | typeof PROTECTED_PAY_ERROR__WRONG_VALIDATOR;
@@ -118,6 +127,8 @@ if (process.env["NODE_ENV"] !== "production") {
     [PROTECTED_PAY_ERROR__PAYMENT_ALREADY_OPEN]: `Payment is already open`,
     [PROTECTED_PAY_ERROR__PAYMENT_DEPOSIT_MISMATCH]: `Payment Deposit relationship is invalid`,
     [PROTECTED_PAY_ERROR__PAYMENT_EXPIRED]: `Payment acknowledgement window has ended`,
+    [PROTECTED_PAY_ERROR__PAYMENT_FUNDS_UNCLAIMED]: `Terminal payment funds must be claimed before redaction`,
+    [PROTECTED_PAY_ERROR__PAYMENT_NOT_CLAIMABLE]: `Payment is not ready for this claimant`,
     [PROTECTED_PAY_ERROR__PAYMENT_NOT_OPEN]: `Payment has not been opened`,
     [PROTECTED_PAY_ERROR__PAYMENT_NOT_TERMINAL]: `Payment must be terminal before redaction`,
     [PROTECTED_PAY_ERROR__PAYMENT_REDACTED]: `Payment has been redacted`,
@@ -125,6 +136,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [PROTECTED_PAY_ERROR__SAME_PARTY]: `Sender and recipient must differ`,
     [PROTECTED_PAY_ERROR__TASK_ALREADY_SCHEDULED]: `A Crank task is already registered for this payment`,
     [PROTECTED_PAY_ERROR__UNAUTHORIZED]: `Unauthorized signer`,
+    [PROTECTED_PAY_ERROR__UNSUPPORTED_PAYMENT_VERSION]: `Payment account uses an unsupported state-machine version`,
     [PROTECTED_PAY_ERROR__WRONG_MINT]: `Wrong token mint`,
     [PROTECTED_PAY_ERROR__WRONG_TOKEN_PROGRAM]: `Wrong token program`,
     [PROTECTED_PAY_ERROR__WRONG_VALIDATOR]: `Wrong Private ER validator`,

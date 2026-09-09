@@ -49,7 +49,7 @@
     "p4:send:recipient-onboarding": "tsx scripts/p4-simulate-recipient-onboarding.ts --send --approved-p4-recipient-onboarding",
     "p4:auth:simulate:private-open": "tsx scripts/p4-auth-simulate-private-open.ts --approved-p4-tee-auth-private-open-simulation",
     "p4:send:private-open": "tsx scripts/p4-auth-simulate-private-open.ts --approved-p4-tee-auth-private-open-simulation --send --approved-p4-private-payment-open",
-    "p4:auth:simulate:expired-schedule": "tsx scripts/p4-auth-simulate-expired-schedule.ts --approved-p4-tee-auth-expired-schedule-simulation",
+    "p4:legacy:diagnose:expired-schedule": "tsx scripts/p4-auth-simulate-expired-schedule.ts --approved-p4-tee-auth-expired-schedule-simulation",
     "p4:auth:simulate:expired-cancel": "tsx scripts/p4-auth-simulate-expired-cancel.ts --approved-p4-tee-auth-expired-cancel-simulation",
     "p4:send:expired-cancel": "tsx scripts/p4-auth-simulate-expired-cancel.ts --approved-p4-tee-auth-expired-cancel-simulation --send --approved-p4-expired-payment-cancellation",
     "typecheck": "tsc --noEmit"

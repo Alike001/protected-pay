@@ -24,6 +24,7 @@ pub const VAULT_SEED: &[u8] = b"vault";
 pub const DEPOSIT_SEED: &[u8] = b"deposit";
 pub const PAYMENT_SEED: &[u8] = b"payment";
 pub const CRANK_PROBE_SEED: &[u8] = b"crank-probe";
+pub const PAYMENT_VERSION: u8 = 2;
 
 #[ephemeral]
 #[program]
@@ -255,7 +256,7 @@ pub mod protected_pay {
             terminal_commitment: [0; 32],
             initialized: false,
             redacted: false,
-            version: 1,
+            version: PAYMENT_VERSION,
             bump: ctx.bumps.payment,
         });
         Ok(())
@@ -377,13 +378,16 @@ pub mod protected_pay {
             .cancel(&mut ctx.accounts.sender_deposit, ctx.accounts.sender.key())
     }
 
-    /// Permissionless and signer-free. Every financial term comes from Payment.
-    /// Early, late, duplicated, and post-terminal calls are safe.
+    /// Permissionless and signer-free. Crank mutates only the shared Payment;
+    /// each entitled party later claims into only their own private Deposit.
     pub fn advance_payment(ctx: Context<AdvancePayment>) -> Result<()> {
-        ctx.accounts.payment.advance(
-            &mut ctx.accounts.sender_deposit,
-            &mut ctx.accounts.recipient_deposit,
-            Clock::get()?.unix_timestamp,
+        ctx.accounts.payment.advance(Clock::get()?.unix_timestamp)
+    }
+
+    pub fn claim_payment(ctx: Context<ClaimPayment>) -> Result<()> {
+        ctx.accounts.payment.claim(
+            &mut ctx.accounts.claimant_deposit,
+            ctx.accounts.claimant.key(),
         )
     }
 
@@ -405,17 +409,6 @@ pub mod protected_pay {
             crate::ID,
             ProtectedPayError::InvalidAccountOwner
         );
-        require_keys_eq!(
-            *ctx.accounts.sender_deposit.owner,
-            crate::ID,
-            ProtectedPayError::InvalidAccountOwner
-        );
-        require_keys_eq!(
-            *ctx.accounts.recipient_deposit.owner,
-            crate::ID,
-            ProtectedPayError::InvalidAccountOwner
-        );
-
         let payment_data = ctx.accounts.payment.try_borrow_data()?;
         let mut payment_slice: &[u8] = &payment_data;
         let mut payment = Payment::try_deserialize(&mut payment_slice)?;
@@ -423,11 +416,7 @@ pub mod protected_pay {
             payment.payment_id == payment_id,
             ProtectedPayError::InvalidPaymentShell
         );
-        payment.validate_schedule_accounts(
-            ctx.accounts.payer.key(),
-            ctx.accounts.sender_deposit.key(),
-            ctx.accounts.recipient_deposit.key(),
-        )?;
+        payment.validate_schedule_actor(ctx.accounts.payer.key())?;
         require!(
             payment.task_id == 0,
             ProtectedPayError::TaskAlreadyScheduled
@@ -442,11 +431,7 @@ pub mod protected_pay {
 
         let advance_ix = Instruction {
             program_id: crate::ID,
-            accounts: vec![
-                AccountMeta::new(ctx.accounts.payment.key(), false),
-                AccountMeta::new(ctx.accounts.sender_deposit.key(), false),
-                AccountMeta::new(ctx.accounts.recipient_deposit.key(), false),
-            ],
+            accounts: vec![AccountMeta::new(ctx.accounts.payment.key(), false)],
             data: anchor_lang::InstructionData::data(&crate::instruction::AdvancePayment {}),
         };
         let schedule_ix = Instruction::new_with_bincode(
@@ -461,8 +446,6 @@ pub mod protected_pay {
                 AccountMeta::new(ctx.accounts.payer.key(), true),
                 AccountMeta::new(ctx.accounts.payer.key(), true),
                 AccountMeta::new(ctx.accounts.payment.key(), false),
-                AccountMeta::new(ctx.accounts.sender_deposit.key(), false),
-                AccountMeta::new(ctx.accounts.recipient_deposit.key(), false),
             ],
         );
         invoke(
@@ -471,8 +454,6 @@ pub mod protected_pay {
                 ctx.accounts.payer.to_account_info(),
                 ctx.accounts.payer.to_account_info(),
                 ctx.accounts.payment.to_account_info(),
-                ctx.accounts.sender_deposit.to_account_info(),
-                ctx.accounts.recipient_deposit.to_account_info(),
             ],
         )?;
         Ok(())
@@ -1130,30 +1111,29 @@ pub struct AdvancePayment<'info> {
         bump = payment.bump,
     )]
     pub payment: Account<'info, Payment>,
+}
+
+#[derive(Accounts)]
+pub struct ClaimPayment<'info> {
+    pub claimant: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [PAYMENT_SEED, payment.payment_id.as_ref()],
+        bump = payment.bump,
+    )]
+    pub payment: Account<'info, Payment>,
     #[account(
         mut,
         seeds = [
             DEPOSIT_SEED,
-            payment.sender.as_ref(),
+            claimant.key().as_ref(),
             payment.token_mint.as_ref(),
         ],
         bump,
-        constraint = sender_deposit.user == payment.sender @ ProtectedPayError::PaymentDepositMismatch,
-        constraint = sender_deposit.token_mint == payment.token_mint @ ProtectedPayError::WrongMint,
+        constraint = claimant_deposit.user == claimant.key() @ ProtectedPayError::Unauthorized,
+        constraint = claimant_deposit.token_mint == payment.token_mint @ ProtectedPayError::WrongMint,
     )]
-    pub sender_deposit: Account<'info, Deposit>,
-    #[account(
-        mut,
-        seeds = [
-            DEPOSIT_SEED,
-            payment.recipient.as_ref(),
-            payment.token_mint.as_ref(),
-        ],
-        bump,
-        constraint = recipient_deposit.user == payment.recipient @ ProtectedPayError::PaymentDepositMismatch,
-        constraint = recipient_deposit.token_mint == payment.token_mint @ ProtectedPayError::WrongMint,
-    )]
-    pub recipient_deposit: Account<'info, Deposit>,
+    pub claimant_deposit: Account<'info, Deposit>,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
@@ -1174,12 +1154,6 @@ pub struct SchedulePayment<'info> {
     /// CHECK: Deserialized and relationship-checked before the scheduler CPI.
     #[account(mut, seeds = [PAYMENT_SEED, payment_id.as_ref()], bump)]
     pub payment: UncheckedAccount<'info>,
-    /// CHECK: Exact PDA, owner, and fields are checked before the scheduler CPI.
-    #[account(mut)]
-    pub sender_deposit: UncheckedAccount<'info>,
-    /// CHECK: Exact PDA, owner, and fields are checked before the scheduler CPI.
-    #[account(mut)]
-    pub recipient_deposit: UncheckedAccount<'info>,
     /// CHECK: The scheduled instruction must target this deployed program.
     #[account(address = crate::ID)]
     pub program: UncheckedAccount<'info>,
@@ -1532,6 +1506,10 @@ impl Payment {
         safety_window_seconds: i64,
         claim_window_seconds: i64,
     ) -> Result<()> {
+        require!(
+            self.version == PAYMENT_VERSION,
+            ProtectedPayError::UnsupportedPaymentVersion
+        );
         require!(!self.initialized, ProtectedPayError::PaymentAlreadyOpen);
         require!(!self.redacted, ProtectedPayError::InvalidPaymentShell);
         require_keys_eq!(self.sender, actor, ProtectedPayError::Unauthorized);
@@ -1554,7 +1532,11 @@ impl Payment {
             .checked_add(1)
             .ok_or_else(|| error!(ProtectedPayError::MathOverflow))?;
 
-        sender_deposit.lock(amount)?;
+        // The value leaves the sender's aggregate Deposit and becomes the
+        // liability represented by this one shared Payment account. This lets
+        // Crank mutate only Payment without gaining access to either party's
+        // aggregate private balance.
+        sender_deposit.debit_available(amount)?;
         sender_deposit.next_payment_nonce = next_payment_nonce;
         self.amount = amount;
         self.created_at = now;
@@ -1569,6 +1551,10 @@ impl Payment {
     }
 
     pub fn acknowledge(&mut self, actor: Pubkey, now: i64) -> Result<()> {
+        require!(
+            self.version == PAYMENT_VERSION,
+            ProtectedPayError::UnsupportedPaymentVersion
+        );
         require!(self.initialized, ProtectedPayError::PaymentNotOpen);
         require!(!self.redacted, ProtectedPayError::PaymentRedacted);
         require_keys_eq!(self.recipient, actor, ProtectedPayError::Unauthorized);
@@ -1582,6 +1568,10 @@ impl Payment {
     }
 
     pub fn cancel(&mut self, sender_deposit: &mut Deposit, actor: Pubkey) -> Result<()> {
+        require!(
+            self.version == PAYMENT_VERSION,
+            ProtectedPayError::UnsupportedPaymentVersion
+        );
         require!(self.initialized, ProtectedPayError::PaymentNotOpen);
         require!(!self.redacted, ProtectedPayError::PaymentRedacted);
         require!(
@@ -1598,33 +1588,29 @@ impl Payment {
             ProtectedPayError::InvalidPaymentStatus
         );
 
-        sender_deposit.unlock(self.amount)?;
+        sender_deposit.credit(self.amount)?;
         self.status = PaymentStatus::Cancelled;
+        self.seal_terminal();
         Ok(())
     }
 
-    pub fn advance(
-        &mut self,
-        sender_deposit: &mut Deposit,
-        recipient_deposit: &mut Deposit,
-        now: i64,
-    ) -> Result<()> {
+    pub fn advance(&mut self, now: i64) -> Result<()> {
+        require!(
+            self.version == PAYMENT_VERSION,
+            ProtectedPayError::UnsupportedPaymentVersion
+        );
         require!(self.initialized, ProtectedPayError::PaymentNotOpen);
-        require!(!self.redacted, ProtectedPayError::PaymentRedacted);
-        self.validate_sender_deposit(sender_deposit)?;
-        self.validate_recipient_deposit(recipient_deposit)?;
 
         if self.status.is_terminal() {
             return Ok(());
         }
+        require!(!self.redacted, ProtectedPayError::PaymentRedacted);
 
         match self.status {
             PaymentStatus::Acknowledged if now >= self.settle_after => {
-                sender_deposit.settle_locked_to(recipient_deposit, self.amount)?;
                 self.status = PaymentStatus::Settled;
             }
             PaymentStatus::Created if now >= self.expires_at => {
-                sender_deposit.unlock(self.amount)?;
                 self.status = PaymentStatus::Expired;
             }
             _ => {}
@@ -1632,12 +1618,32 @@ impl Payment {
         Ok(())
     }
 
-    pub fn validate_schedule_accounts(
-        &self,
-        actor: Pubkey,
-        sender_deposit: Pubkey,
-        recipient_deposit: Pubkey,
-    ) -> Result<()> {
+    pub fn claim(&mut self, claimant_deposit: &mut Deposit, actor: Pubkey) -> Result<()> {
+        require!(
+            self.version == PAYMENT_VERSION,
+            ProtectedPayError::UnsupportedPaymentVersion
+        );
+        require!(self.initialized, ProtectedPayError::PaymentNotOpen);
+        require!(!self.redacted, ProtectedPayError::PaymentRedacted);
+
+        let expected_claimant = match self.status {
+            PaymentStatus::Settled => self.recipient,
+            PaymentStatus::Expired => self.sender,
+            _ => return err!(ProtectedPayError::PaymentNotClaimable),
+        };
+        require_keys_eq!(expected_claimant, actor, ProtectedPayError::Unauthorized);
+        self.validate_claimant_deposit(claimant_deposit, actor)?;
+
+        claimant_deposit.credit(self.amount)?;
+        self.seal_terminal();
+        Ok(())
+    }
+
+    pub fn validate_schedule_actor(&self, actor: Pubkey) -> Result<()> {
+        require!(
+            self.version == PAYMENT_VERSION,
+            ProtectedPayError::UnsupportedPaymentVersion
+        );
         require!(self.initialized, ProtectedPayError::PaymentNotOpen);
         require!(!self.redacted, ProtectedPayError::PaymentRedacted);
         require!(
@@ -1645,34 +1651,14 @@ impl Payment {
             ProtectedPayError::InvalidPaymentStatus
         );
         require_keys_eq!(self.sender, actor, ProtectedPayError::Unauthorized);
-        let expected_sender = Pubkey::find_program_address(
-            &[DEPOSIT_SEED, self.sender.as_ref(), self.token_mint.as_ref()],
-            &crate::ID,
-        )
-        .0;
-        let expected_recipient = Pubkey::find_program_address(
-            &[
-                DEPOSIT_SEED,
-                self.recipient.as_ref(),
-                self.token_mint.as_ref(),
-            ],
-            &crate::ID,
-        )
-        .0;
-        require_keys_eq!(
-            expected_sender,
-            sender_deposit,
-            ProtectedPayError::PaymentDepositMismatch
-        );
-        require_keys_eq!(
-            expected_recipient,
-            recipient_deposit,
-            ProtectedPayError::PaymentDepositMismatch
-        );
         Ok(())
     }
 
     pub fn redact(&mut self) -> Result<()> {
+        require!(
+            self.version == PAYMENT_VERSION,
+            ProtectedPayError::UnsupportedPaymentVersion
+        );
         require!(self.initialized, ProtectedPayError::PaymentNotOpen);
         require!(
             self.status.is_terminal(),
@@ -1681,6 +1667,13 @@ impl Payment {
         if self.redacted {
             return Ok(());
         }
+
+        err!(ProtectedPayError::PaymentFundsUnclaimed)
+    }
+
+    fn seal_terminal(&mut self) {
+        debug_assert!(self.status.is_terminal());
+        debug_assert!(!self.redacted);
 
         let amount = self.amount.to_le_bytes();
         let created_at = self.created_at.to_le_bytes();
@@ -1709,7 +1702,6 @@ impl Payment {
         self.task_id = 0;
         self.memo_hash = [0; 32];
         self.redacted = true;
-        Ok(())
     }
 
     fn validate_sender_deposit(&self, deposit: &Deposit) -> Result<()> {
@@ -1726,10 +1718,10 @@ impl Payment {
         Ok(())
     }
 
-    fn validate_recipient_deposit(&self, deposit: &Deposit) -> Result<()> {
+    fn validate_claimant_deposit(&self, deposit: &Deposit, actor: Pubkey) -> Result<()> {
         require_keys_eq!(
             deposit.user,
-            self.recipient,
+            actor,
             ProtectedPayError::PaymentDepositMismatch
         );
         require_keys_eq!(
@@ -1982,6 +1974,12 @@ pub enum ProtectedPayError {
     InvalidAccountOwner,
     #[msg("Recipient address is invalid")]
     InvalidRecipient,
+    #[msg("Payment account uses an unsupported state-machine version")]
+    UnsupportedPaymentVersion,
+    #[msg("Terminal payment funds must be claimed before redaction")]
+    PaymentFundsUnclaimed,
+    #[msg("Payment is not ready for this claimant")]
+    PaymentNotClaimable,
 }
 
 #[cfg(test)]
@@ -2040,7 +2038,7 @@ mod tests {
             terminal_commitment: [0; 32],
             initialized: false,
             redacted: false,
-            version: 1,
+            version: PAYMENT_VERSION,
             bump: 253,
         };
         let sender_deposit = Deposit {
@@ -2064,8 +2062,8 @@ mod tests {
         (payment, sender_deposit, recipient_deposit)
     }
 
-    fn combined_liability(sender: &Deposit, recipient: &Deposit) -> u64 {
-        sender.total_liability().unwrap() + recipient.total_liability().unwrap()
+    fn system_liability(payment: &Payment, sender: &Deposit, recipient: &Deposit) -> u64 {
+        sender.total_liability().unwrap() + recipient.total_liability().unwrap() + payment.amount
     }
 
     #[test]
@@ -2091,7 +2089,7 @@ mod tests {
     }
 
     #[test]
-    fn opening_locks_exact_amount_and_copies_immutable_terms() {
+    fn opening_moves_exact_amount_into_payment_escrow() {
         let (mut payment, mut sender, _) = payment_fixture(10_000_000);
         let actor = payment.sender;
         let memo_hash = [9; 32];
@@ -2101,7 +2099,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(sender.available, 7_000_000);
-        assert_eq!(sender.locked, 3_000_000);
+        assert_eq!(sender.locked, 0);
         assert_eq!(sender.next_payment_nonce, 1);
         assert_eq!(payment.amount, 3_000_000);
         assert_eq!(payment.created_at, 100);
@@ -2114,7 +2112,7 @@ mod tests {
             .open(&mut sender, actor, 1, [1; 32], 101, 60, 300)
             .is_err());
         assert_eq!(sender.available, 7_000_000);
-        assert_eq!(sender.locked, 3_000_000);
+        assert_eq!(sender.locked, 0);
         assert_eq!(payment.amount, 3_000_000);
     }
 
@@ -2123,7 +2121,7 @@ mod tests {
         let (mut payment, mut sender, mut recipient) = payment_fixture(8_000_000);
         let sender_actor = payment.sender;
         let recipient_actor = payment.recipient;
-        let initial_liability = combined_liability(&sender, &recipient);
+        let initial_liability = system_liability(&payment, &sender, &recipient);
         payment
             .open(
                 &mut sender,
@@ -2137,25 +2135,46 @@ mod tests {
             .unwrap();
         payment.acknowledge(recipient_actor, 1_010).unwrap();
 
-        payment.advance(&mut sender, &mut recipient, 1_059).unwrap();
+        payment.advance(1_059).unwrap();
         assert_eq!(payment.status, PaymentStatus::Acknowledged);
         assert_eq!(recipient.available, 0);
+        assert_eq!(
+            system_liability(&payment, &sender, &recipient),
+            initial_liability
+        );
 
-        payment.advance(&mut sender, &mut recipient, 1_060).unwrap();
+        payment.advance(1_060).unwrap();
         assert_eq!(payment.status, PaymentStatus::Settled);
         assert_eq!(sender.available, 5_500_000);
         assert_eq!(sender.locked, 0);
-        assert_eq!(recipient.available, 2_500_000);
-        assert_eq!(combined_liability(&sender, &recipient), initial_liability);
+        assert_eq!(recipient.available, 0);
+        assert_eq!(payment.amount, 2_500_000);
+        assert_eq!(
+            system_liability(&payment, &sender, &recipient),
+            initial_liability
+        );
 
-        payment.advance(&mut sender, &mut recipient, 9_999).unwrap();
+        payment.claim(&mut recipient, recipient_actor).unwrap();
         assert_eq!(recipient.available, 2_500_000);
-        assert_eq!(combined_liability(&sender, &recipient), initial_liability);
+        assert_eq!(payment.amount, 0);
+        assert!(payment.redacted);
+        assert_eq!(
+            system_liability(&payment, &sender, &recipient),
+            initial_liability
+        );
+
+        payment.advance(9_999).unwrap();
+        assert_eq!(recipient.available, 2_500_000);
+        assert!(payment.claim(&mut recipient, recipient_actor).is_err());
+        assert_eq!(
+            system_liability(&payment, &sender, &recipient),
+            initial_liability
+        );
     }
 
     #[test]
     fn sender_can_cancel_and_later_crank_calls_are_noops() {
-        let (mut payment, mut sender, mut recipient) = payment_fixture(4_000_000);
+        let (mut payment, mut sender, recipient) = payment_fixture(4_000_000);
         let actor = payment.sender;
         payment
             .open(&mut sender, actor, 1_250_000, [4; 32], 20, 60, 300)
@@ -2164,30 +2183,39 @@ mod tests {
         assert_eq!(payment.status, PaymentStatus::Cancelled);
         assert_eq!(sender.available, 4_000_000);
         assert_eq!(sender.locked, 0);
+        assert_eq!(payment.amount, 0);
+        assert!(payment.redacted);
+        assert_ne!(payment.terminal_commitment, [0; 32]);
 
         assert!(payment.cancel(&mut sender, actor).is_err());
-        payment.advance(&mut sender, &mut recipient, 1_000).unwrap();
+        payment.advance(1_000).unwrap();
         assert_eq!(sender.available, 4_000_000);
         assert_eq!(recipient.available, 0);
     }
 
     #[test]
     fn unacknowledged_payment_expires_at_exact_boundary() {
-        let (mut payment, mut sender, mut recipient) = payment_fixture(5_000_000);
+        let (mut payment, mut sender, recipient) = payment_fixture(5_000_000);
         let sender_actor = payment.sender;
         let recipient_actor = payment.recipient;
         payment
             .open(&mut sender, sender_actor, 2_000_000, [5; 32], 100, 60, 300)
             .unwrap();
 
-        payment.advance(&mut sender, &mut recipient, 399).unwrap();
+        payment.advance(399).unwrap();
         assert_eq!(payment.status, PaymentStatus::Created);
         assert!(payment.acknowledge(recipient_actor, 400).is_err());
-        payment.advance(&mut sender, &mut recipient, 400).unwrap();
+        payment.advance(400).unwrap();
         assert_eq!(payment.status, PaymentStatus::Expired);
-        assert_eq!(sender.available, 5_000_000);
+        assert_eq!(sender.available, 3_000_000);
         assert_eq!(sender.locked, 0);
+        assert_eq!(payment.amount, 2_000_000);
         assert_eq!(recipient.available, 0);
+
+        payment.claim(&mut sender, sender_actor).unwrap();
+        assert_eq!(sender.available, 5_000_000);
+        assert_eq!(payment.amount, 0);
+        assert!(payment.redacted);
     }
 
     #[test]
@@ -2203,13 +2231,15 @@ mod tests {
         assert!(payment.cancel(&mut sender, Pubkey::new_unique()).is_err());
         assert_eq!(payment.status, PaymentStatus::Created);
         assert_eq!(sender.available, 5_000_000);
-        assert_eq!(sender.locked, 1_000_000);
+        assert_eq!(sender.locked, 0);
 
         payment.acknowledge(recipient_actor, 1).unwrap();
+        payment.advance(60).unwrap();
+        assert!(payment.claim(&mut sender, sender_actor).is_err());
         recipient.user = Pubkey::new_unique();
-        assert!(payment.advance(&mut sender, &mut recipient, 60).is_err());
-        assert_eq!(payment.status, PaymentStatus::Acknowledged);
-        assert_eq!(sender.locked, 1_000_000);
+        assert!(payment.claim(&mut recipient, recipient_actor).is_err());
+        assert_eq!(payment.status, PaymentStatus::Settled);
+        assert_eq!(payment.amount, 1_000_000);
         assert_eq!(recipient.available, 0);
     }
 
@@ -2230,13 +2260,12 @@ mod tests {
             )
             .unwrap();
         settled.acknowledge(settled_recipient, 1).unwrap();
-        settled
-            .advance(&mut sender_a, &mut recipient_a, 60)
-            .unwrap();
+        settled.advance(60).unwrap();
         assert!(settled.cancel(&mut sender_a, settled_sender).is_err());
+        settled.claim(&mut recipient_a, settled_recipient).unwrap();
         assert_eq!(recipient_a.available, 1_000_000);
 
-        let (mut cancelled, mut sender_b, mut recipient_b) = payment_fixture(3_000_000);
+        let (mut cancelled, mut sender_b, recipient_b) = payment_fixture(3_000_000);
         let cancelled_sender = cancelled.sender;
         let cancelled_recipient = cancelled.recipient;
         cancelled
@@ -2252,9 +2281,7 @@ mod tests {
             .unwrap();
         cancelled.acknowledge(cancelled_recipient, 1).unwrap();
         cancelled.cancel(&mut sender_b, cancelled_sender).unwrap();
-        cancelled
-            .advance(&mut sender_b, &mut recipient_b, 60)
-            .unwrap();
+        cancelled.advance(60).unwrap();
         assert_eq!(cancelled.status, PaymentStatus::Cancelled);
         assert_eq!(sender_b.available, 3_000_000);
         assert_eq!(recipient_b.available, 0);
@@ -2271,10 +2298,13 @@ mod tests {
             .unwrap();
         payment.acknowledge(recipient_actor, 0).unwrap();
 
-        assert!(payment.advance(&mut sender, &mut recipient, 1).is_err());
-        assert_eq!(payment.status, PaymentStatus::Acknowledged);
+        payment.advance(1).unwrap();
+        assert!(payment.claim(&mut recipient, recipient_actor).is_err());
+        assert_eq!(payment.status, PaymentStatus::Settled);
         assert_eq!(sender.available, 1);
-        assert_eq!(sender.locked, 1);
+        assert_eq!(sender.locked, 0);
+        assert_eq!(payment.amount, 1);
+        assert!(!payment.redacted);
         assert_eq!(recipient.available, u64::MAX);
     }
 
@@ -2288,8 +2318,9 @@ mod tests {
             .unwrap();
         assert!(payment.redact().is_err());
         payment.acknowledge(original_recipient, 1_001).unwrap();
-        payment.advance(&mut sender, &mut recipient, 1_060).unwrap();
-        payment.redact().unwrap();
+        payment.advance(1_060).unwrap();
+        assert!(payment.redact().is_err());
+        payment.claim(&mut recipient, original_recipient).unwrap();
 
         let commitment = payment.terminal_commitment;
         assert_ne!(commitment, [0; 32]);
@@ -2334,45 +2365,34 @@ mod tests {
     }
 
     #[test]
-    fn crank_schedule_can_only_bind_stored_parties_and_deposits() {
+    fn crank_schedule_can_only_be_registered_by_the_stored_sender() {
         let (mut payment, mut sender, _) = payment_fixture(1_000_000);
         let actor = payment.sender;
         payment
             .open(&mut sender, actor, 1, [0; 32], 0, 60, 300)
             .unwrap();
-        let sender_pda = Pubkey::find_program_address(
-            &[
-                DEPOSIT_SEED,
-                payment.sender.as_ref(),
-                payment.token_mint.as_ref(),
-            ],
-            &crate::ID,
-        )
-        .0;
-        let recipient_pda = Pubkey::find_program_address(
-            &[
-                DEPOSIT_SEED,
-                payment.recipient.as_ref(),
-                payment.token_mint.as_ref(),
-            ],
-            &crate::ID,
-        )
-        .0;
-
-        payment
-            .validate_schedule_accounts(actor, sender_pda, recipient_pda)
-            .unwrap();
+        payment.validate_schedule_actor(actor).unwrap();
         assert!(payment
-            .validate_schedule_accounts(Pubkey::new_unique(), sender_pda, recipient_pda)
-            .is_err());
-        assert!(payment
-            .validate_schedule_accounts(actor, Pubkey::new_unique(), recipient_pda)
+            .validate_schedule_actor(Pubkey::new_unique())
             .is_err());
 
         payment.status = PaymentStatus::Cancelled;
+        assert!(payment.validate_schedule_actor(actor).is_err());
+    }
+
+    #[test]
+    fn version_one_payment_cannot_enter_the_escrow_state_machine() {
+        let (mut payment, mut sender, _) = payment_fixture(1_000_000);
+        let actor = payment.sender;
+        payment.version = 1;
+
         assert!(payment
-            .validate_schedule_accounts(actor, sender_pda, recipient_pda)
+            .open(&mut sender, actor, 500_000, [1; 32], 0, 60, 300)
             .is_err());
+        assert_eq!(sender.available, 1_000_000);
+        assert_eq!(sender.locked, 0);
+        assert_eq!(payment.amount, 0);
+        assert!(!payment.initialized);
     }
 
     #[test]

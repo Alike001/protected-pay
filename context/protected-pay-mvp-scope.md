@@ -4,7 +4,7 @@ Status: proposed scope, awaiting confirmation of the team's remaining build time
 
 ## Product In One Sentence
 
-Protected Pay gives USDC payments on Solana a private safety window so a sender can undo a mistake before the payment becomes final, while abandoned payments recover automatically.
+Protected Pay gives USDC payments on Solana a private safety window so a sender can undo a mistake before the payment becomes final, while MagicBlock automatically resolves abandoned payments into sender-only recoverable escrow.
 
 ## Target User
 
@@ -16,7 +16,7 @@ This MVP is not for every kind of payment. It is specifically for a payment wher
 
 ## Core Promise
 
-> Approve once. Undo mistakes. Correct payments settle automatically.
+> Protect the payment. Undo mistakes. Let deadlines resolve safely.
 
 The product protects a payment before final settlement. It never claims to seize funds from a recipient after settlement.
 
@@ -30,7 +30,7 @@ The product protects a payment before final settlement. It never claims to seize
 4. Review the recipient and amount.
 5. Approve one protected-payment transaction.
 6. See the privately pending payment and countdown.
-7. Either tap **Undo** or let the payment complete automatically.
+7. Either tap **Undo** or let MagicBlock determine the payment outcome automatically; the entitled owner then claims the escrow.
 
 ### Recipient
 
@@ -58,7 +58,7 @@ The product protects a payment before final settlement. It never claims to seize
 - Private pending-payment state.
 - Sender-controlled cancellation during the safety window.
 - Strict final settlement after the required conditions and time pass.
-- Automatic expiry and refund for an unclaimed payment.
+- Automatic expiry into sender-only recoverable escrow, followed by an owner claim.
 - Payment status: `Created`, `Acknowledged`, `Settled`, `Cancelled`, or `Expired`.
 - A simple activity/history screen.
 - A recovery center with pause, revoke, review, and cancel controls.
@@ -94,7 +94,7 @@ These cuts preserve the one promise judges and users need to remember: **undo US
 |---|---|
 | Ephemeral Rollup | The payment state transitions actually execute against delegated accounts through the ER endpoint. |
 | Private ER | An authorized sender or recipient can read the pending payment; an outsider cannot read the same private details. |
-| Crank | A scheduled deadline instruction settles or expires a payment without a user manually clicking finalize. |
+| Crank | A scheduled deadline instruction settles or expires only the shared Payment without reading either user's aggregate balance. |
 | Solana program | USDC accounting, roles, time guards, and terminal states are enforced by the program rather than the browser. |
 | Base-layer settlement | Committed state and withdrawal provide an explorer-verifiable result. |
 
@@ -104,15 +104,15 @@ Session keys are valuable for bounded automation but are not allowed to delay th
 
 ### 1. Correct Payment
 
-The sender creates a protected USDC payment. The countdown ends, the Crank invokes settlement, and the recipient balance is credited exactly once.
+The sender creates a protected USDC payment. The countdown ends, the Crank marks it settled, and only the recipient can claim the escrow into their balance exactly once.
 
 ### 2. Mistaken Payment
 
-The sender notices the wrong address or amount, taps **Undo**, and the locked USDC returns to the sender's available balance. A later Crank call cannot settle it.
+The sender notices the wrong address or amount, taps **Undo**, and the payment escrow returns to the sender's available balance. A later Crank call cannot settle it.
 
 ### 3. Abandoned Payment
 
-The required recipient acknowledgement never arrives. The claim deadline passes and the Crank expires the payment, returning the funds automatically.
+The required recipient acknowledgement never arrives. The claim deadline passes and the Crank expires the payment, making the escrow recoverable only by the sender.
 
 These three scenarios make the product understandable while proving its most important security invariants.
 
@@ -121,7 +121,7 @@ These three scenarios make the product understandable while proving its most imp
 ### Phase 1: Technical Feasibility Spike
 
 - Create the smallest Anchor program with deposit balance and payment PDAs.
-- Implement `create_payment`, `cancel_payment`, `acknowledge_payment`, `settle_payment`, and `expire_payment`.
+- Implement prepare/open, cancellation, acknowledgement, Crank advance, and owner-only claim instructions.
 - Enforce one-way states, signer roles, time guards, and exact balance accounting.
 - Delegate the relevant accounts and prove at least one transition executes on an Ephemeral Rollup.
 - Stop and reconsider architecture if real token custody, delegated state, or deadline execution cannot work together safely.
@@ -147,12 +147,12 @@ These three scenarios make the product understandable while proving its most imp
 - Test cancel-versus-Crank and settle-versus-expire races.
 - Test double settlement and replay.
 - Test pause and revoked-session behavior.
-- Test that the total of available, locked, settled, and withdrawn amounts remains conserved.
+- Test that the total of available Deposits, unclaimed Payment escrow, and withdrawn amounts remains conserved.
 - Run a devnet/ER end-to-end smoke test and preserve transaction links.
 
 ### Phase 5: Submission
 
-- Record a product-first video whose first 30 seconds show the problem, one approval, Undo, and automatic settlement.
+- Record a product-first video whose first 30 seconds show the problem, Undo, automatic outcome resolution, and the rightful owner's claim.
 - Continue with a short technical proof section rather than making infrastructure the opening story.
 - Publish the accessible repository, deployed program address, explorer link, product URL, and concise project description.
 

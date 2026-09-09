@@ -18,6 +18,7 @@ import {
   SolanaError,
   transformEncoder,
   type AccountMeta,
+  type AccountSignerMeta,
   type Address,
   type FixedSizeCodec,
   type FixedSizeDecoder,
@@ -25,7 +26,9 @@ import {
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
+  type ReadonlySignerAccount,
   type ReadonlyUint8Array,
+  type TransactionSigner,
   type WritableAccount,
 } from "@solana/kit";
 import {
@@ -34,78 +37,104 @@ import {
 } from "@solana/program-client-core";
 import { PROTECTED_PAY_PROGRAM_ADDRESS } from "../programs";
 
-export const ADVANCE_PAYMENT_DISCRIMINATOR: ReadonlyUint8Array = new Uint8Array(
-  [86, 128, 207, 250, 75, 222, 207, 242],
-);
+export const CLAIM_PAYMENT_DISCRIMINATOR: ReadonlyUint8Array = new Uint8Array([
+  69, 112, 250, 167, 37, 156, 200, 30,
+]);
 
-export function getAdvancePaymentDiscriminatorBytes(): ReadonlyUint8Array {
+export function getClaimPaymentDiscriminatorBytes(): ReadonlyUint8Array {
   return fixEncoderSize(getBytesEncoder(), 8).encode(
-    ADVANCE_PAYMENT_DISCRIMINATOR,
+    CLAIM_PAYMENT_DISCRIMINATOR,
   );
 }
 
-export type AdvancePaymentInstruction<
+export type ClaimPaymentInstruction<
   TProgram extends string = typeof PROTECTED_PAY_PROGRAM_ADDRESS,
+  TAccountClaimant extends string | AccountMeta<string> = string,
   TAccountPayment extends string | AccountMeta<string> = string,
+  TAccountClaimantDeposit extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
+      TAccountClaimant extends string
+        ? ReadonlySignerAccount<TAccountClaimant> &
+            AccountSignerMeta<TAccountClaimant>
+        : TAccountClaimant,
       TAccountPayment extends string
         ? WritableAccount<TAccountPayment>
         : TAccountPayment,
+      TAccountClaimantDeposit extends string
+        ? WritableAccount<TAccountClaimantDeposit>
+        : TAccountClaimantDeposit,
       ...TRemainingAccounts,
     ]
   >;
 
-export type AdvancePaymentInstructionData = {
-  discriminator: ReadonlyUint8Array;
-};
+export type ClaimPaymentInstructionData = { discriminator: ReadonlyUint8Array };
 
-export type AdvancePaymentInstructionDataArgs = {};
+export type ClaimPaymentInstructionDataArgs = {};
 
-export function getAdvancePaymentInstructionDataEncoder(): FixedSizeEncoder<AdvancePaymentInstructionDataArgs> {
+export function getClaimPaymentInstructionDataEncoder(): FixedSizeEncoder<ClaimPaymentInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
-    (value) => ({ ...value, discriminator: ADVANCE_PAYMENT_DISCRIMINATOR }),
+    (value) => ({ ...value, discriminator: CLAIM_PAYMENT_DISCRIMINATOR }),
   );
 }
 
-export function getAdvancePaymentInstructionDataDecoder(): FixedSizeDecoder<AdvancePaymentInstructionData> {
+export function getClaimPaymentInstructionDataDecoder(): FixedSizeDecoder<ClaimPaymentInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
   ]);
 }
 
-export function getAdvancePaymentInstructionDataCodec(): FixedSizeCodec<
-  AdvancePaymentInstructionDataArgs,
-  AdvancePaymentInstructionData
+export function getClaimPaymentInstructionDataCodec(): FixedSizeCodec<
+  ClaimPaymentInstructionDataArgs,
+  ClaimPaymentInstructionData
 > {
   return combineCodec(
-    getAdvancePaymentInstructionDataEncoder(),
-    getAdvancePaymentInstructionDataDecoder(),
+    getClaimPaymentInstructionDataEncoder(),
+    getClaimPaymentInstructionDataDecoder(),
   );
 }
 
-export type AdvancePaymentInput<TAccountPayment extends string = string> = {
+export type ClaimPaymentInput<
+  TAccountClaimant extends string = string,
+  TAccountPayment extends string = string,
+  TAccountClaimantDeposit extends string = string,
+> = {
+  claimant: TransactionSigner<TAccountClaimant>;
   payment: Address<TAccountPayment>;
+  claimantDeposit: Address<TAccountClaimantDeposit>;
 };
 
-export function getAdvancePaymentInstruction<
+export function getClaimPaymentInstruction<
+  TAccountClaimant extends string,
   TAccountPayment extends string,
+  TAccountClaimantDeposit extends string,
   TProgramAddress extends Address = typeof PROTECTED_PAY_PROGRAM_ADDRESS,
 >(
-  input: AdvancePaymentInput<TAccountPayment>,
+  input: ClaimPaymentInput<
+    TAccountClaimant,
+    TAccountPayment,
+    TAccountClaimantDeposit
+  >,
   config?: { programAddress?: TProgramAddress },
-): AdvancePaymentInstruction<TProgramAddress, TAccountPayment> {
+): ClaimPaymentInstruction<
+  TProgramAddress,
+  TAccountClaimant,
+  TAccountPayment,
+  TAccountClaimantDeposit
+> {
   // Program address.
   const programAddress =
     config?.programAddress ?? PROTECTED_PAY_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
+    claimant: { value: input.claimant ?? null, isWritable: false },
     payment: { value: input.payment ?? null, isWritable: true },
+    claimantDeposit: { value: input.claimantDeposit ?? null, isWritable: true },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -114,37 +143,48 @@ export function getAdvancePaymentInstruction<
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
-    accounts: [getAccountMeta("payment", accounts.payment)],
-    data: getAdvancePaymentInstructionDataEncoder().encode({}),
+    accounts: [
+      getAccountMeta("claimant", accounts.claimant),
+      getAccountMeta("payment", accounts.payment),
+      getAccountMeta("claimantDeposit", accounts.claimantDeposit),
+    ],
+    data: getClaimPaymentInstructionDataEncoder().encode({}),
     programAddress,
-  } as AdvancePaymentInstruction<TProgramAddress, TAccountPayment>);
+  } as ClaimPaymentInstruction<
+    TProgramAddress,
+    TAccountClaimant,
+    TAccountPayment,
+    TAccountClaimantDeposit
+  >);
 }
 
-export type ParsedAdvancePaymentInstruction<
+export type ParsedClaimPaymentInstruction<
   TProgram extends string = typeof PROTECTED_PAY_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    payment: TAccountMetas[0];
+    claimant: TAccountMetas[0];
+    payment: TAccountMetas[1];
+    claimantDeposit: TAccountMetas[2];
   };
-  data: AdvancePaymentInstructionData;
+  data: ClaimPaymentInstructionData;
 };
 
-export function parseAdvancePaymentInstruction<
+export function parseClaimPaymentInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedAdvancePaymentInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 1) {
+): ParsedClaimPaymentInstruction<TProgram, TAccountMetas> {
+  if (instruction.accounts.length < 3) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 1,
+        expectedAccountMetas: 3,
       },
     );
   }
@@ -156,7 +196,11 @@ export function parseAdvancePaymentInstruction<
   };
   return {
     programAddress: instruction.programAddress,
-    accounts: { payment: getNextAccount() },
-    data: getAdvancePaymentInstructionDataDecoder().decode(instruction.data),
+    accounts: {
+      claimant: getNextAccount(),
+      payment: getNextAccount(),
+      claimantDeposit: getNextAccount(),
+    },
+    data: getClaimPaymentInstructionDataDecoder().decode(instruction.data),
   };
 }

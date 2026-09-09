@@ -4,11 +4,11 @@ Status: hackathon PRD. This document defines what the user must experience; impl
 
 ## Product Summary
 
-Protected Pay is a Solana payment application that places USDC in a private pending state before it becomes final. The sender gets a short safety window to cancel a mistake, the intended recipient confirms the payment with the matching wallet, and abandoned payments recover automatically.
+Protected Pay is a Solana payment application that places USDC in a private pending state before it becomes final. The sender gets a short safety window to cancel a mistake, the intended recipient confirms the payment with the matching wallet, and MagicBlock automation determines whether pending escrow settles or expires while users are offline.
 
 The product promise is:
 
-> **Approve once. Undo mistakes. Correct payments settle automatically.**
+> **Protect the payment. Undo mistakes. Let deadlines resolve safely.**
 
 The product does not reverse an ordinary completed blockchain transfer. It creates a safer settlement process before finality.
 
@@ -53,7 +53,7 @@ When the application opens without a connected wallet, the user sees:
 - a 15–20 second visual explanation of `Send → Pending → Settled or Recovered`;
 - no infrastructure terminology.
 
-After connecting, the user sees their wallet address, available protected USDC balance, locked USDC balance, and one primary action: **Send protected payment**.
+After connecting, the user sees their wallet address, available protected USDC balance, USDC held in individual pending payments, and one primary action: **Send protected payment**.
 
 If the protected balance is empty, the primary action becomes **Add USDC**. The interface explains that this balance is program-controlled while payments are pending and remains withdrawable when not locked.
 
@@ -96,14 +96,14 @@ Acceptance criteria:
 
 ### 3. Approve once
 
-The sender approves one payment transaction. The product creates a unique protected payment and moves the amount from available to locked.
+The sender approves one payment transaction. The product creates a unique protected payment and moves the amount from the sender's aggregate available balance into that payment's private escrow.
 
 Acceptance criteria:
 
 - One approval creates no more than one payment.
 - The payment appears in activity as **Pending** only after confirmation.
 - The same click, refresh, or retry cannot create a second payment accidentally.
-- The available and locked balances update together.
+- The available balance and individual pending-payment amount update together.
 - The user receives a shareable link and copy/share action after creation.
 
 ### 4. Private pending state
@@ -143,14 +143,15 @@ Acceptance criteria:
 - A repeated confirmation is harmless and does not settle twice.
 - The recipient is clearly told that pending money must not be treated as final payment for delivered goods or services.
 
-### 6. Correct payment settles automatically
+### 6. Correct payment resolves automatically and is claimed safely
 
-When the recipient has confirmed and the safety window has ended, the payment settles without another sender action. If the recipient confirms after the safety window but before claim expiry, settlement may occur immediately after that confirmation.
+When the recipient has confirmed and the safety window has ended, MagicBlock Crank marks the payment settled without another sender action. The escrow remains in the shared Payment until the recipient claims it into their own private balance, so automation never receives access to either user's aggregate Deposit.
 
 Acceptance criteria:
 
 - The payment becomes **Settled** only when both confirmation and time conditions are satisfied.
-- Exactly the locked amount is credited to the intended recipient.
+- Exactly the escrowed amount becomes claimable only by the intended recipient.
+- The recipient's claim credits their own private available balance exactly once and seals the Payment.
 - The sender's Undo action is removed after settlement.
 - Both parties see a final receipt with payment ID, amount, parties, status, and completion time.
 - A late or repeated automation attempt cannot credit the recipient twice.
@@ -158,26 +159,26 @@ Acceptance criteria:
 
 ### 7. Sender undoes a mistake
 
-Before settlement, the sender selects **Undo payment**. A confirmation sheet states that the recipient will not receive this payment and that the locked amount will return to the sender's available balance.
+Before settlement, the sender selects **Undo payment**. A confirmation sheet states that the recipient will not receive this payment and that the payment escrow will return to the sender's available balance.
 
 Acceptance criteria:
 
 - Only the sender or an authorized recovery role can cancel.
 - Cancellation remains available after recipient confirmation until settlement actually occurs.
 - A cancelled payment becomes **Cancelled** and cannot later settle.
-- The exact locked amount returns to available balance.
+- The exact escrow amount returns to available balance.
 - The sender and recipient both see the final cancelled status.
 - The application never describes cancellation as a post-settlement clawback.
 
-### 8. Abandoned payment recovers automatically
+### 8. Abandoned payment resolves automatically and recovers safely
 
-If the recipient has not confirmed before the claim deadline, the payment expires and the locked USDC returns to the sender automatically.
+If the recipient has not confirmed before the claim deadline, MagicBlock Crank marks the payment expired while both users may be offline. The escrow then becomes claimable only by the sender; the recovery center can batch that claim when the sender returns.
 
 Acceptance criteria:
 
 - The sender does not need to remain online.
 - The payment becomes **Expired**, not failed or settled.
-- The exact amount returns to the sender's available balance.
+- The exact amount becomes claimable only by the sender and returns to available balance on claim.
 - The old recipient link can no longer confirm or claim.
 - A delayed or repeated expiry action remains harmless.
 - The activity screen explains that the payment expired because it was not confirmed.
@@ -231,9 +232,9 @@ Acceptance criteria:
 |---|---|---|
 | `Created` | Waiting for recipient confirmation | Confirm to accept this pending payment |
 | `Acknowledged` | Recipient confirmed; still undoable until settlement | Confirmed; available after the safety window |
-| `Settled` | Payment completed; Undo is no longer available | USDC received and available |
+| `Settled` | Payment completed; Undo is no longer available | Claim USDC into protected balance |
 | `Cancelled` | Payment undone; USDC returned | Sender cancelled before settlement |
-| `Expired` | Not confirmed; USDC recovered automatically | Payment link expired |
+| `Expired` | Not confirmed; escrow ready to recover | Payment link expired |
 
 ## Fixed Hackathon Timing
 
@@ -292,7 +293,7 @@ These are demonstration settings, not a claim that all real-world payments shoul
 - Recipient confirmation.
 - Sixty-second sender Undo window.
 - Five-minute unconfirmed-payment expiry.
-- Automatic settlement and expiry.
+- Automatic settlement/expiry decisions plus owner-only escrow claims.
 - Activity list and final receipts.
 - Individual and bulk recovery for unsettled payments.
 - Real deployed program and explorer evidence.
@@ -328,9 +329,9 @@ The MVP succeeds when:
 - a new viewer can repeat "Undo for USDC payments" after 30 seconds;
 - a sender completes the funded send flow without learning MagicBlock terminology;
 - a recipient confirms with the correct wallet and a wrong wallet learns nothing private;
-- one payment settles automatically exactly once;
+- one payment becomes settled automatically and is claimed exactly once;
 - one mistaken payment is undone and returns the exact amount;
-- one abandoned payment expires and returns the exact amount without the sender online;
+- one abandoned payment expires without the sender online and only the sender can claim the exact amount;
 - every visible recovery action corresponds to a real, tested program transition;
 - removing MagicBlock would materially remove privacy, real-time delegated execution, and scheduled recovery.
 
@@ -340,7 +341,7 @@ The product-first video should prove three moments:
 
 1. **The emotional hook:** a wrong payment is frightening because normal finality offers no Undo.
 2. **The product moment:** one protected payment displays a private countdown and can be undone.
-3. **The trust moment:** another payment completes automatically and an abandoned one recovers without a browser timer.
+3. **The trust moment:** MagicBlock resolves another payment and an abandoned one without a browser timer; each resulting escrow can be claimed only by its rightful owner.
 
 Technical evidence after the opening product story must include:
 

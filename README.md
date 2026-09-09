@@ -1,6 +1,6 @@
 # Protected Pay
 
-Protected Pay is a private, reversible USDC payment workflow for Solana. A sender can place a payment in a protected pending state, the intended recipient can acknowledge it, and the sender or an automatic deadline can recover funds before final settlement.
+Protected Pay is a private, reversible USDC payment workflow for Solana. A sender can place a payment in a protected pending state, the intended recipient can acknowledge it, and MagicBlock deadlines resolve who is entitled to the per-payment escrow.
 
 The product is being built for the MagicBlock Blitz hackathon. MagicBlock is not a decorative dependency: delegated account state is intended to keep live balances and payment details private, Ephemeral Rollups provide fast state transitions, and MagicBlock Crank will drive deterministic settlement or expiry while users are offline.
 
@@ -14,9 +14,9 @@ The risk-first feasibility phase is complete:
 
 The project will therefore proceed with the precise claim **“private while pending inside MagicBlock's authenticated Private ER,”** not anonymous or permanently secret payments.
 
-Phase 4 now has a locally verified and Devnet-deployed protected-payment state machine: prepare, permission/delegation, private open, recipient acknowledgement, sender cancellation, deterministic settlement/expiry, Crank scheduling, terminal redaction, and commit/undelegation. Its 21 Rust tests, generated IDL/client, TypeScript check, clippy check, optimized SBF build, and byte-for-byte deployment verification pass. The next gate is the live Private ER payment lifecycle and Crank proof before UI work.
+Phase 4's first deployed lifecycle proved private open and sender recovery, then exposed a real permission-topology constraint: one Crank instruction cannot safely touch both users' owner-only aggregate Deposits. The local version-2 design now moves pending liability into the shared Payment, lets Crank mutate only that Payment, and adds owner-only terminal claims. Its 22 Rust tests, regenerated IDL/client, TypeScript check, clippy check, and optimized SBF build pass. The next gate is a Devnet program upgrade followed by the real Payment Crank lifecycle before UI work.
 
-The upgraded Devnet program contains the Phase 4 state machine. The project uses only non-value Devnet test assets and is not audited or production-ready.
+The current Devnet program still contains the version-1 state machine; the version-2 permission correction is locally built but not yet deployed. The project uses only non-value Devnet test assets and is not audited or production-ready.
 
 ## Source layout
 
