@@ -53,6 +53,8 @@ import {
 import { authenticatePrivateEr, PRIVATE_ER_ORIGIN } from "./private-er-auth.ts";
 import {
   V2_RECIPIENT,
+  V21_SETTLEMENT_PAYMENT_ID,
+  V21_SETTLEMENT_PAYMENT_LABEL,
   V2_SETTLEMENT_PAYMENT_ID,
   V2_SETTLEMENT_PAYMENT_LABEL,
 } from "./p4-v2-settlement-bootstrap.ts";
@@ -61,49 +63,65 @@ const DEFAULT_BASE_RPC_URL = "https://api.devnet.solana.com" as const;
 const BASE_RPC_URL = (process.env.SOLANA_RPC_URL ??
   DEFAULT_BASE_RPC_URL) as typeof DEFAULT_BASE_RPC_URL;
 const V2_MODE = process.argv.includes("--v2-settlement");
+const V21_MODE = process.argv.includes("--v21-settlement");
+if (V2_MODE && V21_MODE) {
+  throw new Error("Select only one version-2 settlement fixture");
+}
+const VERSION2_MODE = V2_MODE || V21_MODE;
 const ATOMIC_SCHEDULE = process.argv.includes("--atomic-schedule");
-if (ATOMIC_SCHEDULE && !V2_MODE) {
+if (ATOMIC_SCHEDULE && !VERSION2_MODE) {
   throw new Error("Atomic Payment-only scheduling is available only for version 2");
 }
 const APPROVAL_FLAG = ATOMIC_SCHEDULE
-  ? "--approved-p4-v2-tee-auth-atomic-open-schedule-simulation"
-  : V2_MODE
-    ? "--approved-p4-v2-tee-auth-private-open-simulation"
-    : "--approved-p4-tee-auth-private-open-simulation";
+  ? V21_MODE
+    ? "--approved-p4-v21-tee-auth-atomic-open-schedule-simulation"
+    : "--approved-p4-v2-tee-auth-atomic-open-schedule-simulation"
+  : V21_MODE
+    ? "--approved-p4-v21-tee-auth-private-open-simulation"
+    : V2_MODE
+      ? "--approved-p4-v2-tee-auth-private-open-simulation"
+      : "--approved-p4-tee-auth-private-open-simulation";
 const SEND_REQUESTED = process.argv.includes("--send");
 const SEND_APPROVAL_FLAG = ATOMIC_SCHEDULE
-  ? "--approved-p4-v2-atomic-open-schedule"
-  : V2_MODE
-    ? "--approved-p4-v2-private-payment-open"
-    : "--approved-p4-private-payment-open";
+  ? V21_MODE
+    ? "--approved-p4-v21-atomic-open-schedule"
+    : "--approved-p4-v2-atomic-open-schedule"
+  : V21_MODE
+    ? "--approved-p4-v21-private-payment-open"
+    : V2_MODE
+      ? "--approved-p4-v2-private-payment-open"
+      : "--approved-p4-private-payment-open";
 const MAX_CONFIRMATION_POLLS = 120;
-const RECIPIENT = V2_MODE
+const RECIPIENT = VERSION2_MODE
   ? V2_RECIPIENT
   : ("HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr" as Address);
-const PAYMENT_LABEL = V2_MODE
-  ? V2_SETTLEMENT_PAYMENT_LABEL
-  : "protected-pay:phase4:correct-payment:v1";
-const PAYMENT_ID = V2_MODE
-  ? V2_SETTLEMENT_PAYMENT_ID
-  : new Uint8Array(createHash("sha256").update(PAYMENT_LABEL).digest());
+const PAYMENT_LABEL = V21_MODE
+  ? V21_SETTLEMENT_PAYMENT_LABEL
+  : V2_MODE
+    ? V2_SETTLEMENT_PAYMENT_LABEL
+    : "protected-pay:phase4:correct-payment:v1";
+const PAYMENT_ID = V21_MODE
+  ? V21_SETTLEMENT_PAYMENT_ID
+  : V2_MODE
+    ? V2_SETTLEMENT_PAYMENT_ID
+    : new Uint8Array(createHash("sha256").update(PAYMENT_LABEL).digest());
 // This is a non-sensitive fixture preimage. The proof tests ledger privacy,
 // not secrecy of source-controlled test data.
+const MEMO_PREIMAGE = V21_MODE
+  ? "invoice:prototype-v21-settlement-001:consulting-services"
+  : V2_MODE
+    ? "invoice:prototype-v2-settlement-001:consulting-services"
+    : "invoice:prototype-001:consulting-services";
 const MEMO_HASH = new Uint8Array(
-  createHash("sha256")
-    .update(
-      V2_MODE
-        ? "invoice:prototype-v2-settlement-001:consulting-services"
-        : "invoice:prototype-001:consulting-services",
-    )
-    .digest(),
+  createHash("sha256").update(MEMO_PREIMAGE).digest(),
 );
 const ZERO_32 = new Uint8Array(32);
 const PAYMENT_AMOUNT = 1_000_000n;
 const TOTAL_VAULT_AMOUNT = 3_000_000n;
-const EXPECTED_PAYMENT_VERSION = V2_MODE ? 2 : 1;
-const PRIVATE_PRE_OPEN_NONCE = V2_MODE ? 2n : 1n;
+const EXPECTED_PAYMENT_VERSION = VERSION2_MODE ? 2 : 1;
+const PRIVATE_PRE_OPEN_NONCE = V21_MODE ? 3n : V2_MODE ? 2n : 1n;
 const PRIVATE_POST_OPEN_NONCE = PRIVATE_PRE_OPEN_NONCE + 1n;
-const PRIVATE_POST_OPEN_LOCKED = V2_MODE ? 0n : PAYMENT_AMOUNT;
+const PRIVATE_POST_OPEN_LOCKED = VERSION2_MODE ? 0n : PAYMENT_AMOUNT;
 const MAGIC_PROGRAM = "Magic11111111111111111111111111111111111111" as Address;
 const EXECUTION_INTERVAL_MILLIS = 60_000n;
 // MagicBlock executes iteration 1 immediately, so six runs cover
@@ -655,12 +673,14 @@ console.log(
         ? ["open_payment", "schedule_payment"]
         : ["open_payment"],
       token: "Circle Devnet test USDC",
-      amount: V2_MODE
+      amount: VERSION2_MODE
         ? "1.000000 USDC individual Payment escrow"
         : "1.000000 USDC internal accounting lock",
       paymentLabel: PAYMENT_LABEL,
       paymentVersion: EXPECTED_PAYMENT_VERSION,
-      escrowModel: V2_MODE ? "per-Payment liability" : "aggregate Deposit locked field",
+      escrowModel: VERSION2_MODE
+        ? "per-Payment liability"
+        : "aggregate Deposit locked field",
       taskId: ATOMIC_SCHEDULE ? taskId : null,
       executionIntervalMillis: ATOMIC_SCHEDULE
         ? EXECUTION_INTERVAL_MILLIS

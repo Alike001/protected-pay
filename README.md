@@ -18,6 +18,8 @@ Phase 4's first deployed lifecycle proved private open and sender recovery, then
 
 The first live version-2 atomic open-plus-schedule transaction finalized and moved 1 test USDC into private per-Payment escrow. Its five Crank executions also finalized, but the live cadence proved that iteration 1 runs immediately: the five calls landed at `createdAt + 0, +60, +120, +180, +240`, one call short of the `+300` expiry boundary. The recipient client correctly refused to sign a late acknowledgement, and no recipient transaction was broadcast. Version 2.1 corrects the schedule to six iterations; 23 Rust tests, regenerated IDL/client, TypeScript, clippy, and the optimized SBF build pass. The exact 633,568-byte binary was byte-verified, signature-verified in simulation, and finalized on Devnet at slot `495731340`. An atomic `advance_payment` plus sender-only `claim_payment` recovery finalized on the Private ER, returning the 1 test-USDC escrow stranded by the old schedule and redacting its terminal terms. A fresh acknowledged-payment shell and permission are now delegated on Devnet with both private Deposits excluded and all financial data unchanged. The project uses only non-value Devnet test assets and is not audited or production-ready.
 
+The fresh version-2.1 Payment now passes sender-authenticated, signature-verified simulation of atomic private open plus a six-iteration Payment-only Crank schedule. The simulated 1 test-USDC escrow did not persist, both aggregate Deposits are absent from the scheduled instruction, protected arguments are absent from program logs, and unauthenticated reads remain denied. Live broadcast remains separately gated.
+
 ## Source layout
 
 - `programs/protected-pay`: clean-room Anchor program

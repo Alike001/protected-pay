@@ -1379,3 +1379,55 @@ Transaction status: finalized
 ```
 
 The corrected settlement fixture is now ready for Private ER execution. The next separately approved checkpoint must authenticate the sender and run a signed, non-broadcast simulation of the atomic private open plus the corrected six-iteration Crank schedule; no private value should persist until a later broadcast approval.
+
+## Version-2.1 fresh atomic open-plus-schedule simulation
+
+The guarded private-open runner was extended with an isolated version-2.1 fixture mode and separate simulation and broadcast approval flags. The first authenticated read stopped before transaction construction because the safety check still expected the nonce that preceded the historical version-2 open. That prior open and the earlier version-1 open had both consumed a nonce, while recovery intentionally did not roll either nonce back. The version-2.1 fixture expectation was corrected from private nonce 2 to 3; the existing historical paths remain unchanged.
+
+After the correction, the sender completed a fresh Query Filtering Service challenge. The bearer token remained in memory and was neither printed nor persisted. The authenticated client validated the empty fresh Payment, sender Deposit, both permissions, the executable Crank program, exact vault collateral, and denial of all three unauthenticated protected-account reads.
+
+The client then signed one transaction containing `open_payment` and `schedule_payment` and submitted it only to `simulateTransaction` with signature verification enabled. The schedule targets only the shared Payment and carries six iterations: the already-observed immediate execution plus the five 60-second intervals needed to reach the 300-second expiry boundary.
+
+```text
+Private ER: https://devnet-tee.magicblock.app
+Authenticated identity: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Challenge age: 1 second
+Public finalized preflight slot: 495779985
+Private authorized preflight slot: 300982418
+Payment: 71t8qrKg2cFVSceBEFL4RtmKrfhRcMWzyvq4yh4PwikZ
+Payment label: protected-pay:phase4:v2.1:settlement:1
+Recipient: HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr
+Instructions: open_payment, schedule_payment
+Atomic transaction: true
+Token: Circle Devnet test USDC
+Private Payment escrow after simulation: 1.000000 test USDC
+Sender available after simulation: 2.000000 test USDC
+Sender locked after simulation: 0
+Sender payment nonce: 3 -> 4
+Task ID: 1788982501633
+Execution interval: 60,000 milliseconds
+Iterations: 6
+Scheduled target: advance_payment
+Scheduled target accounts: Payment only
+Scheduled target requires signer: false
+Sender Deposit included in schedule: false
+Recipient Deposit included in schedule: false
+Safety window: 60 seconds
+Expiry boundary: 300 seconds
+Serialized transaction size: 494 bytes
+Prepared, unbroadcast signature: 9S6MjgM22RQahK9kgdbp8NTuFzCBDcqgYenLXfuYRgNboFzMwC1EKbDg1VW6hxDjwHBo8DtHDoYkhn67aEzScKo
+Signed simulation slot: 300982438
+Signature verification: passed
+Simulation error: none
+Compute units consumed: 25,270
+Private ER fee reported by simulation: unavailable
+Protected amount or memo hash in logs: false
+Private state persisted after simulation: false
+Public state changed after simulation: false
+Unauthenticated protected reads: all null
+Bearer token printed or persisted: false
+Hardware attestation independently verified: false
+Transaction broadcast: false
+```
+
+This proves the corrected private-open and scheduling transaction is valid without committing the 1 test-USDC internal balance change or registering the Crank task. A separate explicit approval is required to authenticate again, build fresh signed bytes, repeat signature-verified simulation, and broadcast the atomic transaction to the Private ER. Recipient acknowledgement will be prepared immediately afterward but remains separately gated.
