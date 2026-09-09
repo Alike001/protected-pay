@@ -51,9 +51,12 @@ import {
   TOKEN_PROGRAM_ID,
 } from "./gate1-simulate-delegation.ts";
 import {
+  deriveV21ExpiryAddresses,
   deriveV21SettlementAddresses,
   deriveV2SettlementAddresses,
   V2_RECIPIENT,
+  V21_EXPIRY_PAYMENT_ID,
+  V21_EXPIRY_PAYMENT_LABEL,
   V21_SETTLEMENT_PAYMENT_ID,
   V21_SETTLEMENT_PAYMENT_LABEL,
   V2_SETTLEMENT_PAYMENT_ID,
@@ -75,17 +78,27 @@ const PAYMENT_SIZE = 245;
 const PERMISSION_SIZE = 567;
 const COMPUTE_UNIT_LIMIT = 600_000;
 const V21_SETTLEMENT_MODE = process.argv.includes("--v21-settlement");
+const V21_EXPIRY_MODE = process.argv.includes("--v21-expiry");
+if (V21_SETTLEMENT_MODE && V21_EXPIRY_MODE) {
+  throw new Error("--v21-settlement and --v21-expiry are mutually exclusive");
+}
 const SEND_REQUESTED = process.argv.includes("--send");
 const VERIFY_REQUESTED = process.argv.includes("--verify-finalized");
-const APPROVAL_FLAG = V21_SETTLEMENT_MODE
-  ? "--approved-p4-v21-settlement-delegation"
-  : "--approved-p4-v2-settlement-delegation";
-const PAYMENT_ID = V21_SETTLEMENT_MODE
-  ? V21_SETTLEMENT_PAYMENT_ID
-  : V2_SETTLEMENT_PAYMENT_ID;
-const PAYMENT_LABEL = V21_SETTLEMENT_MODE
-  ? V21_SETTLEMENT_PAYMENT_LABEL
-  : V2_SETTLEMENT_PAYMENT_LABEL;
+const APPROVAL_FLAG = V21_EXPIRY_MODE
+  ? "--approved-p4-v21-expiry-delegation"
+  : V21_SETTLEMENT_MODE
+    ? "--approved-p4-v21-settlement-delegation"
+    : "--approved-p4-v2-settlement-delegation";
+const PAYMENT_ID = V21_EXPIRY_MODE
+  ? V21_EXPIRY_PAYMENT_ID
+  : V21_SETTLEMENT_MODE
+    ? V21_SETTLEMENT_PAYMENT_ID
+    : V2_SETTLEMENT_PAYMENT_ID;
+const PAYMENT_LABEL = V21_EXPIRY_MODE
+  ? V21_EXPIRY_PAYMENT_LABEL
+  : V21_SETTLEMENT_MODE
+    ? V21_SETTLEMENT_PAYMENT_LABEL
+    : V2_SETTLEMENT_PAYMENT_LABEL;
 
 type EncodedAccountData = readonly [string, string];
 
@@ -117,9 +130,11 @@ function json(value: unknown): string {
 async function derivePlan(
   signer: TransactionSigner = createNoopSigner(AUTHORITY),
 ) {
-  const addresses = V21_SETTLEMENT_MODE
-    ? await deriveV21SettlementAddresses()
-    : await deriveV2SettlementAddresses();
+  const addresses = V21_EXPIRY_MODE
+    ? await deriveV21ExpiryAddresses()
+    : V21_SETTLEMENT_MODE
+      ? await deriveV21SettlementAddresses()
+      : await deriveV2SettlementAddresses();
   const [permissionDelegation, paymentDelegation] = await Promise.all([
     deriveDelegationPdas(addresses.paymentPermission, PERMISSION_PROGRAM_ID),
     deriveDelegationPdas(addresses.payment, PROGRAM_ID),

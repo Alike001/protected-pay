@@ -26,7 +26,7 @@ Recipient-authenticated readback now confirms the live Payment autonomously reac
 
 The approved recipient claim subsequently finalized on the Private ER. The recipient now holds 1 test USDC in private available accounting, the Payment remains `Settled` with sensitive terms redacted and escrow cleared, and the public vault still holds all 3 test USDC collateral. This completes the corrected live settlement path; the fresh unattended-expiry path remains next.
 
-A separate deterministic version-2.1 expiry fixture is now live on Devnet. Its empty Payment shell and permission were created in one finalized transaction after both unsigned and signature-verified simulations passed. No USDC moved and neither private Deposit changed; delegation is the next separately gated step.
+A separate deterministic version-2.1 expiry fixture is now delegated on Devnet. Its empty Payment shell and permission were created and then delegated in separately approved, simulation-first transactions. Both temporary delegation buffers closed, persistent records and metadata exist, no USDC moved, and neither private Deposit changed. Sender TEE authentication and atomic private open-plus-six-call scheduling are next.
 
 ## Source layout
 

@@ -1652,3 +1652,44 @@ Independent transaction status: finalized, Ok
 ```
 
 This completes only the base-layer bootstrap. The next checkpoint is unsigned delegation simulation for exactly this Payment and permission; loading a signer or broadcasting delegation still requires a separate explicit approval.
+
+## Version-2.1 fresh expiry delegation
+
+The settlement delegation runner was extended with a mutually exclusive expiry mode and expiry-specific approval flag. This mode derives only the fresh expiry Payment and permission, while preserving the same owner, allocation, discriminator, relationship, and delegated-Deposit checks used by the proven settlement fixture.
+
+Unsigned simulation proved all six proposed delegation PDAs were absent, both existing user Deposits were already delegated but excluded from the instructions, and delegating the Payment plus permission preserved every financial byte. Following explicit approval, the runner loaded only the sender signer, repeated the full validation and signature-verified simulation with a fresh blockhash, then broadcast the same 701-byte transaction.
+
+The transaction finalized successfully. An independent CLI confirmation and a separate finalized topology verifier agree that the Payment and permission are delegated, both temporary buffers closed, all four persistent delegation records/metadata exist, and the unopened Payment remains version 2 with amount zero.
+
+```text
+Cluster: Solana Devnet
+Payment: AvZwmKkHPvrTHk3qyYCeuTAg2jSSrYM9tLEm4gKUD759
+Payment permission: Acg1YJySxHLLFwiFmQ4u5s3EpphtX2emGFGGKiPXAnPw
+Fee payer and only signer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Instructions: delegate Payment permission, delegate Payment
+Unsigned simulation slot: 495794003
+Fresh pre-state slot: 495794153
+Fresh signed simulation slot: 495794189
+Prepared/finalized signature: 63ph8Uese5MA7nhKoMrzFkyH3JYD6ysqab3NdkC5S6UFR3dSZskmwG3rr3awMMFJwNfmRDR82SKorN9HiyzGf3yN
+Transaction execution slot: 495794202
+Finalized runner readback slot: 495794210
+Independent finalized readback slot: 495794318
+Transaction size: 701 bytes
+Signed simulation error: none
+Compute units consumed: 118,743
+Transaction fee: 5,000 lamports
+Persistent delegation-account rent: 4,612,640 lamports
+Total fee plus rent: 4,617,640 lamports
+Authority balance: 6.68864692 -> 6.68402928 SOL
+Payment and permission owner: DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh
+Temporary delegation buffers closed: true
+Persistent records and metadata present: true
+Payment version / amount / initialized: 2 / 0 / false
+Sender Deposit included in instructions: false
+Recipient Deposit included in instructions: false
+Financial data changed: false
+USDC moved: 0
+Independent transaction status: finalized, Ok
+```
+
+The next gate is sender TEE authentication and signed, non-broadcast simulation of atomic `open_payment` plus a six-iteration Payment-only Crank schedule. It must show 1 test USDC moving only inside private accounting, no acknowledgement, both aggregate Deposits excluded from the scheduled instruction, and no persistent state change.
