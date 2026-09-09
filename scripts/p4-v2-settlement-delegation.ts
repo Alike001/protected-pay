@@ -51,8 +51,11 @@ import {
   TOKEN_PROGRAM_ID,
 } from "./gate1-simulate-delegation.ts";
 import {
+  deriveV21SettlementAddresses,
   deriveV2SettlementAddresses,
   V2_RECIPIENT,
+  V21_SETTLEMENT_PAYMENT_ID,
+  V21_SETTLEMENT_PAYMENT_LABEL,
   V2_SETTLEMENT_PAYMENT_ID,
   V2_SETTLEMENT_PAYMENT_LABEL,
 } from "./p4-v2-settlement-bootstrap.ts";
@@ -71,9 +74,18 @@ const DEPOSIT_SIZE = 98;
 const PAYMENT_SIZE = 245;
 const PERMISSION_SIZE = 567;
 const COMPUTE_UNIT_LIMIT = 600_000;
+const V21_SETTLEMENT_MODE = process.argv.includes("--v21-settlement");
 const SEND_REQUESTED = process.argv.includes("--send");
 const VERIFY_REQUESTED = process.argv.includes("--verify-finalized");
-const APPROVAL_FLAG = "--approved-p4-v2-settlement-delegation";
+const APPROVAL_FLAG = V21_SETTLEMENT_MODE
+  ? "--approved-p4-v21-settlement-delegation"
+  : "--approved-p4-v2-settlement-delegation";
+const PAYMENT_ID = V21_SETTLEMENT_MODE
+  ? V21_SETTLEMENT_PAYMENT_ID
+  : V2_SETTLEMENT_PAYMENT_ID;
+const PAYMENT_LABEL = V21_SETTLEMENT_MODE
+  ? V21_SETTLEMENT_PAYMENT_LABEL
+  : V2_SETTLEMENT_PAYMENT_LABEL;
 
 type EncodedAccountData = readonly [string, string];
 
@@ -105,7 +117,9 @@ function json(value: unknown): string {
 async function derivePlan(
   signer: TransactionSigner = createNoopSigner(AUTHORITY),
 ) {
-  const addresses = await deriveV2SettlementAddresses();
+  const addresses = V21_SETTLEMENT_MODE
+    ? await deriveV21SettlementAddresses()
+    : await deriveV2SettlementAddresses();
   const [permissionDelegation, paymentDelegation] = await Promise.all([
     deriveDelegationPdas(addresses.paymentPermission, PERMISSION_PROGRAM_ID),
     deriveDelegationPdas(addresses.payment, PROGRAM_ID),
@@ -132,7 +146,7 @@ async function derivePlan(
       delegationRecordPayment: paymentDelegation.record,
       delegationMetadataPayment: paymentDelegation.metadata,
       payment: addresses.payment,
-      paymentId: V2_SETTLEMENT_PAYMENT_ID,
+      paymentId: PAYMENT_ID,
     }),
   ];
   return {
@@ -222,7 +236,7 @@ async function loadValidatedPreState(plan: Awaited<ReturnType<typeof derivePlan>
   const payment = getPaymentDecoder().decode(paymentBytes);
   if (
     !bytesEqual(payment.discriminator, PAYMENT_DISCRIMINATOR) ||
-    !bytesEqual(payment.paymentId, V2_SETTLEMENT_PAYMENT_ID) ||
+    !bytesEqual(payment.paymentId, PAYMENT_ID) ||
     payment.sender !== AUTHORITY ||
     payment.recipient !== V2_RECIPIENT ||
     payment.tokenMint !== USDC_MINT ||
@@ -403,7 +417,7 @@ async function verifyFinalizedDelegation() {
   );
   if (
     !bytesEqual(payment.discriminator, PAYMENT_DISCRIMINATOR) ||
-    !bytesEqual(payment.paymentId, V2_SETTLEMENT_PAYMENT_ID) ||
+    !bytesEqual(payment.paymentId, PAYMENT_ID) ||
     payment.sender !== AUTHORITY ||
     payment.recipient !== V2_RECIPIENT ||
     payment.tokenMint !== USDC_MINT ||
@@ -516,7 +530,7 @@ async function simulateDelegation() {
         feePayer: AUTHORITY,
         signers: [AUTHORITY],
         recipientSignatureRequired: false,
-        paymentLabel: V2_SETTLEMENT_PAYMENT_LABEL,
+        paymentLabel: PAYMENT_LABEL,
         instructions: ["delegate Payment permission", "delegate Payment"],
         writableFinancialAccounts: [plan.payment],
         senderDepositIncludedInInstructions: false,

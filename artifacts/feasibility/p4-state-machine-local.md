@@ -1304,3 +1304,43 @@ Independent CLI confirmation: finalized
 ```
 
 Independent CLI account reads confirmed the exact owners and allocations after finalization. The Payment shell publicly names sender, recipient, and token mint by design, but contains no private amount, memo, timing, task, or opened-state values. The next checkpoint is an unsigned delegation simulation targeting the configured Private ER validator; delegation broadcast remains separately gated.
+
+## Version-2.1 fresh settlement delegation simulation
+
+The delegation runner was extended with an isolated version-2.1 fixture mode and a separate broadcast-approval flag, while preserving the historical version-2 path. Following the current MagicBlock delegation topology, it derives and validates the buffer, delegation-record, and delegation-metadata PDAs for both the Payment and its Permission account.
+
+The unsigned runner independently read the finalized shell and permission, validated the deployed program, Config, validator, both already-delegated user Deposits, and all relevant account identities, owners, discriminators, and allocations. It proved that all six new delegation accounts were absent before constructing the transaction with a no-op signer. Signature verification was disabled only for simulation; no keypair was loaded and no transaction was broadcast.
+
+```text
+Cluster: Solana Devnet
+Finalized pre-state slot: 495772447
+Simulation slot: 495772505
+Fee payer and proposed signer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Payment label: protected-pay:phase4:v2.1:settlement:1
+Payment: 71t8qrKg2cFVSceBEFL4RtmKrfhRcMWzyvq4yh4PwikZ
+Payment permission: CAjEn5BnHunwprwxHSoANJLCGBDkMt1YKTeqnbtVi9bP
+Payment account version: 2
+Instructions: delegate Payment permission, delegate Payment
+Configured private validator targeted: true
+Proposed delegation accounts absent: true
+Sender Deposit already delegated: true
+Recipient Deposit already delegated: true
+Sender Deposit included in instructions: false
+Recipient Deposit included in instructions: false
+Recipient signature required: false
+Writable financial accounts: Payment only
+Transaction size: 701 bytes
+Simulation error: none
+Compute units consumed: 93,243
+Estimated fee: 5,000 lamports
+Delegation-account rent: 4,612,640 lamports
+Estimated fee plus rent: 4,617,640 lamports
+Payment and permission owner after simulation: Delegation Program
+All financial data unchanged: true
+USDC moved: 0
+User-to-user SOL transfer: 0
+Signed: false
+Broadcast: false
+```
+
+This proves the fresh fixture can enter MagicBlock's delegated topology without granting either user access to the other's aggregate Deposit and without moving payment value. A separate explicit approval is required to load the exact sender signer, rerun signature-verified simulation on fresh wire bytes, and broadcast the delegation to Devnet.
