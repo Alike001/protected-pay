@@ -2018,7 +2018,7 @@ Transaction signed: false
 Transaction broadcast: false
 ```
 
-The public-after-commit result remains unproven. The next checkpoint requires separate approval for sender TEE authentication and signature-verified simulation only. Broadcast must remain behind another approval after the simulation output is reviewed.
+At this checkpoint the public-after-commit result remained unproven. The next separately approved checkpoints supplied the signed simulation and finalized broadcast evidence below.
 
 ## Version-2.1 terminal closeout signed simulation
 
@@ -2054,4 +2054,39 @@ Hardware attestation independently verified: false
 Transaction broadcast: false
 ```
 
-The final Phase 4 onchain mutation is still gated: broadcast this Payment-only closeout only after separate approval, then independently verify the public redacted bytes and that both aggregate Deposits remain delegated.
+The final Phase 4 onchain mutation remained gated at this checkpoint. It was separately approved and is proven below.
+
+## Version-2.1 finalized terminal closeout
+
+With separate explicit approval, the sender reauthenticated, signed a fresh 320-byte closeout, and repeated signature-verified simulation successfully at Private ER slot `301184619`. The exact signed transaction then finalized on the Private ER at slot `301184653` and scheduled the public commitment.
+
+Public Solana `ProcessUndelegation` finalized at slot `495841058`. The broadcast runner verified the result immediately, and a separate no-sign process repeated the public account, receipt, terminal-commitment, vault, delegation-topology, and unauthenticated visibility assertions at finalized read slot `495842094`.
+
+```text
+Private ER transaction: Zh9jropwxoVtKV6kVhqcZcVbsHGXPfZm8ZHjsH29oAp4RRJBMRT7LUZZwaPZM9KDwEGgMMCd16DBHRtpFMbtMMQ
+Private ER finalized slot: 301184653
+Scheduled-commit receipt: 2F5hmMPY7SozPXq74VChtiYRDSVqGbYhW7D4XWCAUDu6SfTkc2e5uWkzxbZDv32mpZT3ZQ6UK4vnwvDzNVNHe7bG
+Public ProcessUndelegation: 2ncJVLoHZ14hwmCcPpD9Qp5GEQyyY2NeYz1EvcnWVCWATeBfN3JNMFm8e7W9J89ccZ4qWRssyQbpB7vBgJFMjXiv
+Public finalized slot: 495841058
+Final independent read slot: 495842094
+Payment owner: Protected Pay program
+Payment status / redacted / escrow: Expired / true / 0
+Recipient, amount, memo, timestamps, task ID: redacted
+Terminal commitment: exact match
+Payment delegation record and metadata: closed
+Payment Permission: still delegated
+Sender and recipient Deposits: still delegated
+Aggregate balances published: false
+Vault collateral: 3.000000 test USDC
+Original amount or memo in public logs: false
+Unauthenticated protected reads: all null
+SPL Token instructions / USDC movement: none / zero
+```
+
+Reproducible independent verification:
+
+```sh
+NO_DNA=1 npm run p4:v21:verify:closeout
+```
+
+This completes Phase 4's live ledger work: corrected settlement, unattended expiry, owner-only recovery, retry safety, privacy measurement, terminal redaction, and public commitment all pass with exact conservation. Approval-count measurement and the product interface are next.

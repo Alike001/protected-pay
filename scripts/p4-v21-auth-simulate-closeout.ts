@@ -15,6 +15,7 @@ import {
   signTransactionMessageWithSigners,
   type Address,
   type ReadonlyUint8Array,
+  type Signature,
 } from "@solana/kit";
 import { getSetComputeUnitLimitInstruction } from "@solana-program/compute-budget";
 
@@ -31,6 +32,7 @@ import { PaymentStatus } from "../clients/ts/src/generated/types/paymentStatus.t
 import { AUTHORITY, PROGRAM_ID, USDC_MINT } from "./gate1-simulate.ts";
 import {
   DELEGATION_PROGRAM_ID,
+  deriveDelegationPdas,
   PERMISSION_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
 } from "./gate1-simulate-delegation.ts";
@@ -44,6 +46,10 @@ import {
 
 const APPROVAL_FLAG =
   "--approved-p4-v21-expiry-tee-auth-closeout-simulation";
+const BROADCAST_APPROVAL_FLAG =
+  "--approved-p4-v21-expiry-terminal-closeout-broadcast";
+const SEND_REQUESTED = process.argv.includes("--send");
+const MAX_CONFIRMATION_POLLS = 180;
 const PUBLIC_RPC_URL = "https://api.devnet.solana.com" as const;
 const PAYMENT_SIZE = 245;
 const DEPOSIT_SIZE = 98;
@@ -101,6 +107,10 @@ function tokenAmount(data: Uint8Array): bigint {
     data.byteOffset,
     data.byteLength,
   ).getBigUint64(64, true);
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function expectedTerminalCommitment(): Uint8Array {
@@ -164,8 +174,10 @@ if (!process.argv.includes(APPROVAL_FLAG)) {
     `Refusing to sign TEE authentication or a simulation transaction without ${APPROVAL_FLAG}`,
   );
 }
-if (process.argv.includes("--send")) {
-  throw new Error("Closeout simulation has no broadcast path");
+if (SEND_REQUESTED && !process.argv.includes(BROADCAST_APPROVAL_FLAG)) {
+  throw new Error(
+    `Refusing to broadcast terminal closeout without ${BROADCAST_APPROVAL_FLAG}`,
+  );
 }
 const keypairPath = process.env.SOLANA_KEYPAIR_PATH;
 if (!keypairPath) {
@@ -471,3 +483,275 @@ console.log(
     },
   }),
 );
+
+if (SEND_REQUESTED) {
+  const submittedSignature = await privateRpc
+    .sendTransaction(wire, {
+      encoding: "base64",
+      maxRetries: 5n,
+      preflightCommitment: "confirmed",
+      skipPreflight: false,
+    })
+    .send();
+  if (submittedSignature !== preparedSignature) {
+    throw new Error(
+      "Private ER returned a signature different from the signed transaction",
+    );
+  }
+
+  let erConfirmation:
+    | {
+        slot: bigint;
+        confirmationStatus?: "processed" | "confirmed" | "finalized";
+        err: unknown;
+      }
+    | undefined;
+  for (let poll = 0; poll < MAX_CONFIRMATION_POLLS; poll += 1) {
+    const statusResponse = await privateRpc
+      .getSignatureStatuses([preparedSignature], {
+        searchTransactionHistory: true,
+      })
+      .send();
+    const status = statusResponse.value[0];
+    if (status?.err) {
+      throw new Error(`Private ER closeout failed: ${json(status.err)}`);
+    }
+    if (
+      status?.confirmationStatus === "confirmed" ||
+      status?.confirmationStatus === "finalized"
+    ) {
+      erConfirmation = {
+        slot: status.slot,
+        confirmationStatus: status.confirmationStatus,
+        err: status.err,
+      };
+      break;
+    }
+    const blockHeight = await privateRpc
+      .getBlockHeight({ commitment: "confirmed" })
+      .send();
+    if (blockHeight > latestBlockhash.lastValidBlockHeight) {
+      throw new Error("Private ER closeout expired before confirmation");
+    }
+    await wait(500);
+  }
+  if (!erConfirmation) {
+    throw new Error("Private ER closeout confirmation timed out");
+  }
+
+  let scheduledCommitReceipt: string | undefined;
+  let erTransactionSlot: bigint | undefined;
+  let erBlockTime: bigint | null | undefined;
+  for (let poll = 0; poll < 60; poll += 1) {
+    const receipt = await privateRpc
+      .getTransaction(preparedSignature, {
+        commitment: "confirmed",
+        encoding: "json",
+        maxSupportedTransactionVersion: 0,
+      })
+      .send();
+    if (receipt?.meta?.err) {
+      throw new Error(
+        `Confirmed Private ER closeout contains an error: ${json(receipt.meta.err)}`,
+      );
+    }
+    const receiptLine = receipt?.meta?.logMessages?.find((line) =>
+      line.includes("ScheduledCommitSent signature:"),
+    );
+    const match = receiptLine?.match(
+      /ScheduledCommitSent signature: ([1-9A-HJ-NP-Za-km-z]{64,88})/,
+    );
+    if (receipt && match?.[1]) {
+      scheduledCommitReceipt = match[1];
+      erTransactionSlot = receipt.slot;
+      erBlockTime = receipt.blockTime;
+      break;
+    }
+    await wait(250);
+  }
+  if (
+    !scheduledCommitReceipt ||
+    erTransactionSlot === undefined ||
+    erBlockTime === undefined
+  ) {
+    throw new Error("Could not obtain the scheduled-commit receipt");
+  }
+
+  const [paymentDelegation, permissionDelegation] = await Promise.all([
+    deriveDelegationPdas(addresses.payment, PROGRAM_ID),
+    deriveDelegationPdas(addresses.paymentPermission, PERMISSION_PROGRAM_ID),
+  ]);
+  let publicSettlement:
+    | {
+        readSlot: bigint;
+        processSignature: Signature;
+        processSlot: bigint;
+        processBlockTime: bigint | null;
+        paymentOwner: Address;
+        paymentStatus: string;
+        paymentRedacted: boolean;
+        terminalCommitmentMatches: boolean;
+        paymentDelegationAccountsClosed: boolean;
+        paymentPermissionRemainsDelegated: boolean;
+        aggregateDepositsRemainDelegated: boolean;
+        vaultCollateral: bigint;
+        protectedAmountOrMemoFoundInPublicLogs: boolean;
+      }
+    | undefined;
+
+  for (let poll = 0; poll < MAX_CONFIRMATION_POLLS; poll += 1) {
+    const response = await publicRpc
+      .getMultipleAccounts(
+        [
+          addresses.payment,
+          paymentDelegation.buffer,
+          paymentDelegation.record,
+          paymentDelegation.metadata,
+          addresses.paymentPermission,
+          permissionDelegation.buffer,
+          permissionDelegation.record,
+          permissionDelegation.metadata,
+          addresses.deposit,
+          addresses.recipientDeposit,
+          addresses.vaultUsdcAta,
+        ],
+        { commitment: "finalized", encoding: "base64" },
+      )
+      .send();
+    const [
+      paymentAccount,
+      paymentBuffer,
+      paymentRecord,
+      paymentMetadata,
+      permissionAccount,
+      permissionBuffer,
+      permissionRecord,
+      permissionMetadata,
+      senderDeposit,
+      recipientDeposit,
+      vault,
+    ] = response.value;
+    if (paymentAccount?.owner !== PROGRAM_ID) {
+      await wait(500);
+      continue;
+    }
+    if (
+      !bytesEqual(accountBytes(paymentAccount.data), before.paymentBytes) ||
+      paymentBuffer !== null ||
+      paymentRecord !== null ||
+      paymentMetadata !== null ||
+      !permissionAccount ||
+      permissionAccount.owner !== DELEGATION_PROGRAM_ID ||
+      !bytesEqual(accountBytes(permissionAccount.data), publicBefore.bytes[1]!) ||
+      permissionBuffer !== null ||
+      !permissionRecord ||
+      permissionRecord.owner !== DELEGATION_PROGRAM_ID ||
+      !permissionMetadata ||
+      permissionMetadata.owner !== DELEGATION_PROGRAM_ID ||
+      !senderDeposit ||
+      senderDeposit.owner !== DELEGATION_PROGRAM_ID ||
+      !bytesEqual(accountBytes(senderDeposit.data), publicBefore.bytes[2]!) ||
+      !recipientDeposit ||
+      recipientDeposit.owner !== DELEGATION_PROGRAM_ID ||
+      !bytesEqual(accountBytes(recipientDeposit.data), publicBefore.bytes[3]!) ||
+      !vault ||
+      vault.owner !== TOKEN_PROGRAM_ID ||
+      !bytesEqual(accountBytes(vault.data), publicBefore.bytes[4]!) ||
+      tokenAmount(accountBytes(vault.data)) !== EXPECTED_VAULT_AMOUNT
+    ) {
+      throw new Error("Finalized public closeout topology or bytes are invalid");
+    }
+    const payment = validatePayment(accountBytes(paymentAccount.data));
+    const history = await publicRpc
+      .getSignaturesForAddress(addresses.payment, {
+        commitment: "finalized",
+        limit: 10,
+      })
+      .send();
+    let processEntry:
+      | { signature: Signature; slot: bigint; blockTime: bigint | null }
+      | undefined;
+    let protectedDataFound = false;
+    for (const entry of history) {
+      if (entry.slot <= publicBefore.response.context.slot || entry.err !== null) {
+        continue;
+      }
+      const candidate = await publicRpc
+        .getTransaction(entry.signature, {
+          commitment: "finalized",
+          encoding: "json",
+          maxSupportedTransactionVersion: 0,
+        })
+        .send();
+      const keys = candidate?.transaction.message.accountKeys ?? [];
+      if (
+        candidate?.meta?.err === null &&
+        keys.includes(addresses.payment) &&
+        keys.includes(DELEGATION_PROGRAM_ID)
+      ) {
+        const publicLogs = candidate.meta.logMessages ?? [];
+        protectedDataFound = publicLogs.some(
+          (line) =>
+            line.includes(ORIGINAL_AMOUNT.toString()) ||
+            line.includes(Buffer.from(ORIGINAL_MEMO_HASH).toString("hex")),
+        );
+        processEntry = {
+          signature: entry.signature,
+          slot: entry.slot,
+          blockTime: entry.blockTime,
+        };
+        break;
+      }
+    }
+    if (!processEntry) {
+      await wait(500);
+      continue;
+    }
+    if (protectedDataFound) {
+      throw new Error("Public closeout logs exposed original amount or memo hash");
+    }
+    publicSettlement = {
+      readSlot: response.context.slot,
+      processSignature: processEntry.signature,
+      processSlot: processEntry.slot,
+      processBlockTime: processEntry.blockTime,
+      paymentOwner: paymentAccount.owner,
+      paymentStatus: PaymentStatus[payment.status],
+      paymentRedacted: payment.redacted,
+      terminalCommitmentMatches: true,
+      paymentDelegationAccountsClosed: true,
+      paymentPermissionRemainsDelegated: true,
+      aggregateDepositsRemainDelegated: true,
+      vaultCollateral: EXPECTED_VAULT_AMOUNT,
+      protectedAmountOrMemoFoundInPublicLogs: false,
+    };
+    break;
+  }
+  if (!publicSettlement) {
+    throw new Error(
+      "Public terminal Payment did not finalize before verification timed out",
+    );
+  }
+
+  const unauthenticatedFinal = await readUnauthenticatedState();
+  console.log(
+    json({
+      finalizedTerminalCloseout: {
+        cluster: "MagicBlock Private ER to Solana Devnet",
+        erSignature: preparedSignature,
+        erTransactionSlot,
+        erBlockTime,
+        erConfirmation,
+        scheduledCommitReceipt,
+        publicSettlement,
+        unauthenticatedPrivateErReadSlot: unauthenticatedFinal.context.slot,
+        paymentPublishedOnlyAfterRedaction: true,
+        recipientRemainsPublicThroughPreDelegationHistoryAndPermission: true,
+        aggregateBalancesPublished: false,
+        splTokenMovement: "none",
+        usdcMoved: "0",
+        authenticationTokenPrintedOrStored: false,
+      },
+    }),
+  );
+}

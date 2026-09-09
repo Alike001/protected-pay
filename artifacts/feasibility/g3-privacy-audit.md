@@ -1,6 +1,6 @@
 # G3 — Permission And Commitment Privacy Audit
 
-Status: **NARROW PASS; unrelated-wallet denial and the corrected Payment's pre-commit field boundary are proven, while independent hardware attestation and the public post-commit result remain separate checks**
+Status: **NARROW PASS; unrelated-wallet denial and the corrected Payment's complete pre-commit through public post-commit field boundary are proven, while independent hardware attestation remains a separate check**
 
 The product's claim is deliberately narrow: only state transitions performed after delegation inside an authenticated Private ER may be described as private. Funding, withdrawal, wallet-to-Deposit linkage, permission membership and capabilities, account addresses, the pre-delegation balance snapshot, transaction timing, and committed terminal data are observable or may become observable and must be disclosed.
 
@@ -151,7 +151,7 @@ The feasibility result is **NARROW**, not an absolute-privacy result:
 - unauthenticated and unrelated authenticated readers are denied the protected state;
 - permission membership, delegation metadata, addresses, timing, pre-delegation state, and eventual committed terminal state are public.
 
-Protected Pay may proceed only with language such as **“private while pending inside the authenticated Private ER”**. It must not claim anonymous payments, hidden wallet relationships, hidden funding, hidden timing, or permanent confidentiality after commitment. The future Payment account requires a fresh field-by-field audit before submission, and raw memos must never be committed.
+Protected Pay may proceed only with language such as **“private while pending inside the authenticated Private ER”**. It must not claim anonymous payments, hidden wallet relationships, hidden funding, hidden timing, or permanent confidentiality after commitment. The feasibility result required a fresh field-by-field audit of the production-shaped Payment before submission; that corrected-layout audit and redacted public commitment are recorded below. Raw memos must never be committed.
 
 ## Corrected version-2.1 Payment audit
 
@@ -210,4 +210,36 @@ Unauthenticated protected reads: all null
 Transaction broadcast: false
 ```
 
-The public-after-commit result is still a prediction. It requires a separately approved broadcast followed by finalized public byte and delegation-topology verification.
+The public-after-commit result was then proven by the separately approved broadcast and independent verifier below.
+
+### Finalized redacted public commitment
+
+The sender reauthenticated, repeated the exact signature-verified simulation with a fresh blockhash, and broadcast the same 320-byte transaction. Private ER transaction `Zh9jropwxoVtKV6kVhqcZcVbsHGXPfZm8ZHjsH29oAp4RRJBMRT7LUZZwaPZM9KDwEGgMMCd16DBHRtpFMbtMMQ` finalized at slot `301184653` and produced scheduled-commit receipt `2F5hmMPY7SozPXq74VChtiYRDSVqGbYhW7D4XWCAUDu6SfTkc2e5uWkzxbZDv32mpZT3ZQ6UK4vnwvDzNVNHe7bG`.
+
+Public Solana `ProcessUndelegation` transaction `2ncJVLoHZ14hwmCcPpD9Qp5GEQyyY2NeYz1EvcnWVCWATeBfN3JNMFm8e7W9J89ccZ4qWRssyQbpB7vBgJFMjXiv` finalized at Devnet slot `495841058`. A separate no-sign verifier later repeated the public and unauthenticated reads at finalized Devnet slot `495842094`.
+
+The 245-byte Payment is now owned by Protected Pay and publicly contains the expected redacted terminal form:
+
+```text
+Payment ID:              public
+Sender and USDC mint:    public
+Status:                  Expired
+Initialized / redacted:  true / true
+Version:                 2
+Terminal commitment:     exact independently reproduced hash
+Recipient:               zeroed
+Amount / escrow:         zero
+Memo hash:               zeroed
+Created/settle/expiry:   zeroed
+Crank task ID:           zero
+```
+
+The Payment delegation record and metadata are closed. Its Permission remains delegated and continues to reveal both wallet members. The sender and recipient Deposits remain delegated, so their aggregate balances were not published. Vault collateral remains exactly 3 test USDC. The public transaction logs contain neither the original amount nor memo hash, and unauthenticated Private ER reads of Payment and both Deposits remain `null`.
+
+Reproducible no-sign verification:
+
+```sh
+NO_DNA=1 npm run p4:v21:verify:closeout
+```
+
+This completes technical risk 3 with the deliberately narrow result: payment terms and balances are private during delegated execution and sensitive terminal fields are redacted before public commitment, but counterparties, permission membership, account topology, funding, and timing metadata are not anonymous.
