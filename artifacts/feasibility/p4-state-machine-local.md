@@ -312,3 +312,24 @@ Broadcast: false
 ```
 
 The current proof uses one recipient signature and charges Devnet fee/rent to the recipient wallet. The production UX target is still one signature, but with a sponsor or relayer paying transaction costs. Gas sponsorship has not yet been implemented and is not claimed by this proof.
+
+After explicit approval, the guarded client repeated the unsigned checks, loaded only the exact recipient signer, and passed a signature-verified simulation before broadcast. The transaction finalized, and an independent non-verbose CLI confirmation plus recipient Deposit transaction-history lookup returned the same signature.
+
+```text
+Signed preflight error: null
+Signed preflight compute units: 130,292
+Finalized transaction: 3Q3axzzAsMceVAZ6UAVwLmfnN57WAyAT5QbXGKyfF6T5hxtbfjSmPFLmZfAPVy7raM5nZUoXy55ur2bf2SBxS8Mf
+Finalized verification slot: 495557646
+Recipient balance: 5.950449615 SOL -> 5.942118495 SOL
+Fee plus account rent: 8,331,120 lamports
+USDC moved: 0
+SOL transferred: 0
+Recipient available/locked: 0/0
+Recipient permission: AmRuy7GSJ84Bad2qoc3NF8Y3b36ScsrDCwMgnDDBjUPa
+Recipient permission owner: MagicBlock Delegation Program
+Recipient Deposit owner: MagicBlock Delegation Program
+Temporary delegation buffers persisted: false
+Sender signature required: false
+```
+
+The finalized read validated the recipient permission and Deposit owners and allocations, all four persistent delegation record/metadata accounts, the absence of temporary buffers, the Deposit discriminator and identity fields, and the unchanged vault token bytes.

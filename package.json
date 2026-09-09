@@ -46,6 +46,7 @@
     "p4:simulate:sender-delegation": "tsx scripts/p4-simulate-sender-delegation.ts",
     "p4:send:sender-delegation": "tsx scripts/p4-simulate-sender-delegation.ts --send --approved-p4-sender-delegation",
     "p4:simulate:recipient-onboarding": "tsx scripts/p4-simulate-recipient-onboarding.ts",
+    "p4:send:recipient-onboarding": "tsx scripts/p4-simulate-recipient-onboarding.ts --send --approved-p4-recipient-onboarding",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
