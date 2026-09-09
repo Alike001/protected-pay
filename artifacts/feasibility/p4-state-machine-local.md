@@ -606,3 +606,42 @@ Temporary buffer signer file retained: no
 ```
 
 A fresh second pass reconstructed the entire buffer at finalized commitment and found all 704 logical chunks already byte-identical, providing an independent no-write verification. The exact `Upgrade` instruction has not been signed or broadcast. Its next checkpoint is a signed, non-broadcast simulation against this finalized buffer; only a later, separately approved transaction may mutate the ProgramData account and consume/refund the buffer.
+
+## Exact version-2 Devnet upgrade simulation
+
+After explicit approval, the finalized buffer was fetched again from base Devnet and compared byte-for-byte with the pinned local artifact. The guarded client validated the Devnet genesis hash, Program → ProgramData link, loader owners and discriminators, ProgramData and buffer authorities, allocation lengths, fee payer/system ownership, and the complete buffer hash before loading the authority signer.
+
+The exact `UpgradeableLoaderInstruction::Upgrade` account order was taken from the current Solana loader-v3 interface: ProgramData, Program, Buffer, spill account, Rent sysvar, Clock sysvar, and upgrade-authority signer. The authority wallet was also the spill destination and fee payer. The signed transaction was submitted only to `simulateTransaction` with signature verification enabled; the client has no broadcast path.
+
+```text
+Cluster: Solana Devnet
+Instruction: UpgradeableLoaderInstruction::Upgrade
+Program: w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk
+ProgramData: BXX67CiW14MVLku97gfUm4muQKwUc7uDsSrbC9qsYRAj
+Buffer: CjV4LC6X8pY6C2uoB7fEGFvXXZvtY7Mg2kGwPvjYhB1r
+Fee payer, spill, and upgrade authority: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Binary length: 633,568 bytes
+Binary and finalized-buffer SHA-256: 5b2f04b8b347a85e5f7f03dc9305709aaaab7fb538738d348919a8811756d6f5
+ProgramData capacity: 635,136 bytes
+Live deploy slot before simulation: 495532661
+Simulated deploy slot after upgrade: 495647054
+Simulated ProgramData bytecode matched: true
+Simulated 1,568-byte trailing allocation zeroed: true
+Simulated buffer drained: true
+Simulated buffer-rent refund: 3.21936364 SOL
+Simulated ProgramData rent top-up: 0 SOL
+Estimated fee: 5,000 lamports (0.000005 SOL)
+Authority before simulation: 3.49903488 SOL
+Authority after simulated refund and fee: 6.71839352 SOL
+Compute units consumed: 2,370
+Prepared, unbroadcast signature: 2Pq6fGnBJxBeMBsmyP86brymdw7L4gCJkV26x5Kk4PiWAsJaDZgAtjK62oPp1MiLAvNMHtAMiBFBmwEaW5EyqEGh
+Signature verification: passed
+Simulation error: null
+Prepared signature found on Devnet: no
+Live deploy slot after simulation: 495532661
+Live buffer still present and byte-identical: true
+Live authority balance unchanged: true
+Transaction broadcast: no
+```
+
+The simulation proves the exact loader transition, bytecode replacement, trailing-byte cleanup, buffer closure/refund, and authority accounting. A separate approval is still required to sign and broadcast a fresh transaction with a fresh blockhash. The simulation signature itself is intentionally unbroadcast and will expire.
