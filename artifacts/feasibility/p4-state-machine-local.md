@@ -395,3 +395,40 @@ Hardware attestation independently verified: false
 ```
 
 The open is now real Private ER state. Its Payment amount, memo hash, and updated balance are visible to authorized members but remain absent from the public base snapshot and unavailable through unauthenticated Private ER reads.
+
+## Expired-Payment Crank schedule feasibility result
+
+The five-minute Payment expired before the separate schedule approval arrived. This exposed an important product constraint: human approval latency and a short claim window cannot be combined unless open and schedule are atomic or the demo window is longer.
+
+After explicit approval, the sender authenticated again and the guarded client built the required MagicBlock Crank schedule: five executions at 60-second intervals, targeting signer-free `advance_payment` with no financial arguments. The Payment, sender Deposit, and recipient Deposit remained delegated, and unauthenticated reads remained hidden.
+
+The signed simulation did not execute. The Query Filtering Service returned no RPC error, but it consumed zero compute units, emitted no program logs, and returned no simulated accounts.
+
+```text
+Observed at: 1788947766
+Payment expiry: 1788946809
+Expired by: 957 seconds
+Private Payment status: Created
+Private amount: 1.000000 test USDC
+Private sender available/locked: 2.000000/1.000000 test USDC
+Sender can read Payment: yes
+Sender can read sender Deposit: yes
+Sender can read recipient Deposit: no
+Attempted instruction: schedule_payment
+Task ID: 1788946809
+Interval/iterations: 60,000 ms / 5
+Scheduled target: advance_payment
+Financial arguments in scheduled instruction: none
+Simulation RPC error: null
+Compute units consumed: 0
+Program logs: none
+Returned simulated accounts: none
+Signed: true
+Broadcast: false
+```
+
+Current MagicBlock documentation says a private permission presently implies account read access; separate read/write capabilities may be added later. The sender-authenticated request therefore cannot span the recipient-only aggregate Deposit. Adding every sender to that permission would leak the recipient's complete Deposit balance and is rejected as an unsafe workaround.
+
+This is a product-architecture finding, not a passed Crank gate. The recommended correction is to move automated terminal decisions into a shared per-Payment escrow/state account, then let the sender or recipient claim the terminal result into only their own private Deposit. That keeps the automation account shared without exposing either party's aggregate balance.
+
+For the currently locked test payment, `cancel_payment` is still available as the immediate human-recovery path because it touches only the shared Payment and sender Deposit. It will return the locked 1 test USDC to the sender's private available balance.
