@@ -39,6 +39,8 @@
     "gate2:verify:bootstrap": "tsx scripts/gate2-verify-bootstrap.ts",
     "gate3:audit:bootstrap": "tsx scripts/gate3-audit-public-bootstrap.ts",
     "p4:simulate:program-extend": "tsx scripts/p4-simulate-program-extend.ts",
+    "p4:simulate:timing-policy": "tsx scripts/p4-update-timing-policy.ts",
+    "p4:send:timing-policy": "tsx scripts/p4-update-timing-policy.ts --send --approved-p4-timing-policy",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

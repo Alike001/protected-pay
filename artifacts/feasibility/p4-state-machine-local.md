@@ -146,3 +146,25 @@ Remaining authority-owned buffers: none
 ```
 
 The dumped on-chain bytecode and local optimized artifact were both 635,136 bytes and matched byte-for-byte by SHA-256. The temporary buffer was consumed and closed, its rent was refunded, and all temporary recovered key files were deleted from the in-memory temporary directory.
+
+## Timing-policy update preflight
+
+The guarded Phase 4 timing-policy client validated the finalized Config owner, 154-byte allocation, discriminator, stored authority, Circle Devnet USDC mint, SPL Token program, Private ER validator, and current `300/86400` policy. It then simulated the proposed `60/300` update with a no-op signer, so no signature or broadcast was possible.
+
+```text
+Finalized pre-state slot: 495537709
+Simulation slot: 495537747
+Config: n7i13zNfTRnBzvB9q7CrkNP3CKZE6rZTFBrcb4cevYs
+Writable accounts: Config only
+Current safety/claim windows: 300 / 86,400 seconds
+Proposed safety/claim windows: 60 / 300 seconds
+Simulation error: null
+Compute units consumed: 4,962
+Estimated fee: 5,000 lamports
+SOL moved: 0
+Tokens moved: none
+Signed: false
+Broadcast: false
+```
+
+The Config allocation and rent remained unchanged in simulation. The program copies these windows into a Payment when it opens, so the policy update affects future payments and does not shorten deadlines already stored in an active Payment. Live submission remains approval-gated.
