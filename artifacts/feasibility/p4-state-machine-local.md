@@ -333,3 +333,40 @@ Sender signature required: false
 ```
 
 The finalized read validated the recipient permission and Deposit owners and allocations, all four persistent delegation record/metadata accounts, the absence of temporary buffers, the Deposit discriminator and identity fields, and the unchanged vault token bytes.
+
+## Authenticated private Payment-open simulation
+
+After explicit approval, the sender authenticated with MagicBlock's Query Filtering Service. The client validated the challenge format, exact wallet address, and freshness before signing it. The bearer token existed only inside the process and was neither printed nor persisted. Independent hardware-attestation verification remains out of scope and is not claimed.
+
+Before constructing the Payment instruction, the client validated the public Config and vault collateral, all six delegated Payment/Deposit/permission accounts, and the exact public shell relationships and snapshots. An unauthenticated Private ER query returned `null` for the Payment, sender Deposit, and recipient Deposit. The authenticated sender could read only the Payment and sender Deposit needed for opening.
+
+```text
+Public finalized pre-state slot: 495561010
+Authenticated Private ER pre-state slot: 300256418
+Signed simulation slot: 300256435
+Private ER: https://devnet-tee.magicblock.app
+Authenticated identity: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Payment: DX7ndZZSka9KzDfhzjaA4ww3T4pmXFRHUyAoZFUScidY
+Recipient: HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr
+Instruction: open_payment
+Private amount: 1.000000 test USDC
+Transaction size: 391 bytes
+Prepared, unbroadcast signature: 6275T5P29Nj3RmS8pZrTAXerB53mECPtJHZjkJF17zTuuWLzduTsHnKW7HGf6oyfeeximNpttpAzJH9anLKXBPTb
+Signature verification: passed
+Simulation error: null
+Compute units consumed: 12,843
+Sender available/locked: 3.000000/0 -> 2.000000/1.000000
+Sender payment nonce: 1 -> 2
+Payment amount/initialized: 0/false -> 1.000000/true
+Settlement delay: 60 seconds
+Expiry delay: 300 seconds
+SPL token movement: none
+Protected amount or memo hash in program logs: false
+Unauthenticated protected reads: all null
+Private state persisted after simulation: false
+Public state changed after simulation: false
+Signed: true
+Broadcast: false
+```
+
+This proves that the actual Payment state machine—not a standalone privacy demo—can privately apply an approved payment amount and memo hash while atomically locking the matching sender balance. It also proves simulation-only safety: the signed transaction was never submitted, and both the private and public pre-state remained unchanged afterward.

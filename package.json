@@ -47,6 +47,7 @@
     "p4:send:sender-delegation": "tsx scripts/p4-simulate-sender-delegation.ts --send --approved-p4-sender-delegation",
     "p4:simulate:recipient-onboarding": "tsx scripts/p4-simulate-recipient-onboarding.ts",
     "p4:send:recipient-onboarding": "tsx scripts/p4-simulate-recipient-onboarding.ts --send --approved-p4-recipient-onboarding",
+    "p4:auth:simulate:private-open": "tsx scripts/p4-auth-simulate-private-open.ts --approved-p4-tee-auth-private-open-simulation",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
