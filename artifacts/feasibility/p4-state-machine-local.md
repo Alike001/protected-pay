@@ -575,3 +575,34 @@ Program mutation: none
 ```
 
 This passes the signed authority, funding, loader-buffer allocation, initialization, and bytecode-write-path checks without changing Devnet. The remaining dependency is structural rather than a failed test: a separately approved real buffer upload is required before the exact signed `Upgrade` transaction can be simulated against Devnet. The eventual upgrade broadcast must remain a third, separately approved action after that exact simulation passes.
+
+## Version-2 Devnet buffer upload
+
+After separate explicit approval, the 633,605-byte upgradeable-loader buffer was created on base Devnet and funded with the previously calculated rent. The official public endpoint accepted the creation and an initial portion of the upload, then rate-limited the machine. A second public endpoint also rate-limited the CLI uploader. Both uploaders were stopped without abandoning the buffer.
+
+Current MagicBlock Router documentation was checked through Context7 and its official repository. The router inspects writable accounts and routes non-delegated state to Solana. A guarded resumable uploader was therefore added using the router's account-aware `getBlockhashForAccounts` method. Each transaction was signed by the validated buffer authority, used node preflight, wrote only the reviewed artifact bytes, and was confirmed before its batch advanced. Resume scans skipped byte-identical chunks.
+
+```text
+Cluster: Solana Devnet
+Program: w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk
+ProgramData: BXX67CiW14MVLku97gfUm4muQKwUc7uDsSrbC9qsYRAj
+Program deploy slot before upload: 495532661
+Program deploy slot after upload: 495532661
+Program upgraded: no
+Buffer: CjV4LC6X8pY6C2uoB7fEGFvXXZvtY7Mg2kGwPvjYhB1r
+Buffer owner: BPFLoaderUpgradeab1e11111111111111111111111
+Buffer authority: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Buffer allocation: 633,605 bytes
+Buffer rent: 3.21936364 SOL (still locked and refundable)
+Uploaded bytecode length: 633,568 bytes
+Logical 900-byte chunks verified: 704 / 704
+Local binary SHA-256: 5b2f04b8b347a85e5f7f03dc9305709aaaab7fb538738d348919a8811756d6f5
+Finalized buffer SHA-256: 5b2f04b8b347a85e5f7f03dc9305709aaaab7fb538738d348919a8811756d6f5
+Finalized verification slot: 495639933
+Authority balance before upload: 6.72221852 SOL
+Authority balance after upload: 3.49903488 SOL
+Actual transaction fees and retries: 0.00382 SOL
+Temporary buffer signer file retained: no
+```
+
+A fresh second pass reconstructed the entire buffer at finalized commitment and found all 704 logical chunks already byte-identical, providing an independent no-write verification. The exact `Upgrade` instruction has not been signed or broadcast. Its next checkpoint is a signed, non-broadcast simulation against this finalized buffer; only a later, separately approved transaction may mutate the ProgramData account and consume/refund the buffer.
