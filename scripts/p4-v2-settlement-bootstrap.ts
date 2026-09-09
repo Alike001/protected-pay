@@ -81,6 +81,10 @@ export const V21_SETTLEMENT_PAYMENT_LABEL =
 export const V21_SETTLEMENT_PAYMENT_ID = new Uint8Array(
   createHash("sha256").update(V21_SETTLEMENT_PAYMENT_LABEL).digest(),
 );
+export const V21_EXPIRY_PAYMENT_LABEL = "protected-pay:phase4:v2.1:expiry:1";
+export const V21_EXPIRY_PAYMENT_ID = new Uint8Array(
+  createHash("sha256").update(V21_EXPIRY_PAYMENT_LABEL).digest(),
+);
 const ZERO_32 = new Uint8Array(32);
 const CONFIG_SIZE = 154;
 const DEPOSIT_SIZE = 98;
@@ -88,16 +92,26 @@ const PAYMENT_SIZE = 245;
 const PERMISSION_SIZE = 567;
 const COMPUTE_UNIT_LIMIT = 300_000;
 const V21_SETTLEMENT_MODE = process.argv.includes("--v21-settlement");
+const V21_EXPIRY_MODE = process.argv.includes("--v21-expiry");
+if (V21_SETTLEMENT_MODE && V21_EXPIRY_MODE) {
+  throw new Error("Select only one version-2.1 fixture");
+}
 const SEND_REQUESTED = process.argv.includes("--send");
-const APPROVAL_FLAG = V21_SETTLEMENT_MODE
-  ? "--approved-p4-v21-settlement-bootstrap"
-  : "--approved-p4-v2-settlement-bootstrap";
-const PAYMENT_LABEL = V21_SETTLEMENT_MODE
-  ? V21_SETTLEMENT_PAYMENT_LABEL
-  : V2_SETTLEMENT_PAYMENT_LABEL;
-const PAYMENT_ID = V21_SETTLEMENT_MODE
-  ? V21_SETTLEMENT_PAYMENT_ID
-  : V2_SETTLEMENT_PAYMENT_ID;
+const APPROVAL_FLAG = V21_EXPIRY_MODE
+  ? "--approved-p4-v21-expiry-bootstrap"
+  : V21_SETTLEMENT_MODE
+    ? "--approved-p4-v21-settlement-bootstrap"
+    : "--approved-p4-v2-settlement-bootstrap";
+const PAYMENT_LABEL = V21_EXPIRY_MODE
+  ? V21_EXPIRY_PAYMENT_LABEL
+  : V21_SETTLEMENT_MODE
+    ? V21_SETTLEMENT_PAYMENT_LABEL
+    : V2_SETTLEMENT_PAYMENT_LABEL;
+const PAYMENT_ID = V21_EXPIRY_MODE
+  ? V21_EXPIRY_PAYMENT_ID
+  : V21_SETTLEMENT_MODE
+    ? V21_SETTLEMENT_PAYMENT_ID
+    : V2_SETTLEMENT_PAYMENT_ID;
 
 type EncodedAccountData = readonly [string, string];
 
@@ -180,6 +194,10 @@ export async function deriveV2SettlementAddresses() {
 
 export async function deriveV21SettlementAddresses() {
   return deriveSettlementAddresses(V21_SETTLEMENT_PAYMENT_ID);
+}
+
+export async function deriveV21ExpiryAddresses() {
+  return deriveSettlementAddresses(V21_EXPIRY_PAYMENT_ID);
 }
 
 async function deriveSelectedSettlementAddresses() {

@@ -1576,3 +1576,41 @@ Transaction status: finalized
 ```
 
 This completes the corrected live settlement lifecycle from empty base-layer shell through private open, automated scheduling, recipient acknowledgement, autonomous settlement, and recipient claim. The next Phase 4 proof must use a distinct fresh Payment fixture, omit acknowledgement, observe automatic `Created -> Expired` at the sixth execution, and let only the sender reclaim the escrow.
+
+## Version-2.1 fresh expiry bootstrap simulation
+
+The expiry proof uses a new deterministic Payment ID and address so the successful settlement fixture remains immutable evidence. The shared bootstrap runner was extended with an isolated `--v21-expiry` mode, exported derivation helper, and separate future broadcast approval flag. Existing version-2 and version-2.1 settlement modes remain unchanged.
+
+The unsigned runner validated the deployed program, exact `60/300` timing policy, both delegated Deposit identities and permissions, sender and recipient system accounts, and executable Permission Program. It proved the new expiry Payment and permission were absent, then simulated `prepare_payment` plus `create_payment_permission` using a no-op signer. No keypair was loaded and signature verification was disabled only for this unsigned construction checkpoint.
+
+```text
+Cluster: Solana Devnet
+Finalized pre-state slot: 495790640
+Simulation slot: 495790675
+Program: w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk
+Payment label: protected-pay:phase4:v2.1:expiry:1
+Payment ID: 759c4e3fbf3ad9a11c1797e1db3f7e27d0cc4110956e07e0d10aaf1dd005b4a0
+Payment: AvZwmKkHPvrTHk3qyYCeuTAg2jSSrYM9tLEm4gKUD759
+Payment permission: Acg1YJySxHLLFwiFmQ4u5s3EpphtX2emGFGGKiPXAnPw
+Payment and permission absent before simulation: true
+Instructions: prepare_payment, create_payment_permission
+Fee payer and proposed signer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Recipient signature required: false
+Transaction size: 464 bytes
+Simulation error: none
+Compute units consumed: 33,814
+Estimated fee: 5,000 lamports
+Estimated fee plus rent: 5,430,440 lamports
+Payment version after simulation: 2
+Payment amount / initialized after simulation: 0 / false
+Sender and recipient publicly named by shell: true
+Both existing Deposits already delegated: true
+Both existing Deposit permissions already delegated: true
+Existing private Deposits mutated: false
+USDC moved: 0
+User-to-user SOL transfer: 0
+Signed: false
+Broadcast: false
+```
+
+This checkpoint proves safe construction of the new base-Devnet shell and permission only. A separate explicit approval is required to load the sender signer, rerun signature-verified simulation with a fresh blockhash, and broadcast their creation. Delegation and the private unattended-expiry lifecycle remain later gates.
