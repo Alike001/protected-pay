@@ -14,9 +14,9 @@ The risk-first feasibility phase is complete:
 
 The project will therefore proceed with the precise claim **“private while pending inside MagicBlock's authenticated Private ER,”** not anonymous or permanently secret payments.
 
-Phase 4 now has a locally verified protected-payment state machine: prepare, permission/delegation, private open, recipient acknowledgement, sender cancellation, deterministic settlement/expiry, Crank scheduling, terminal redaction, and commit/undelegation. Its 21 Rust tests, generated IDL/client, TypeScript check, clippy check, and optimized SBF build pass. The next gate is live Private ER/Devnet simulation and proof before UI work.
+Phase 4 now has a locally verified and Devnet-deployed protected-payment state machine: prepare, permission/delegation, private open, recipient acknowledgement, sender cancellation, deterministic settlement/expiry, Crank scheduling, terminal redaction, and commit/undelegation. Its 21 Rust tests, generated IDL/client, TypeScript check, clippy check, optimized SBF build, and byte-for-byte deployment verification pass. The next gate is the live Private ER payment lifecycle and Crank proof before UI work.
 
-The deployed Devnet program still contains the earlier feasibility build until an upgrade is separately simulated and approved. The project uses only non-value Devnet test assets and is not audited or production-ready.
+The upgraded Devnet program contains the Phase 4 state machine. The project uses only non-value Devnet test assets and is not audited or production-ready.
 
 ## Source layout
 

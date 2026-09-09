@@ -90,7 +90,7 @@ The first three technical risks from the accepted specification map directly to 
 | G2 Crank | PASS | Official MagicBlock scheduling produced three autonomous private executions; one transition plus two no-ops; terminal state committed to Solana | Replace the probe with the real Payment state machine |
 | G3 privacy | NARROW PASS | Outsider denial and exact public/private metadata boundary measured | Independently verify TEE attestation; re-audit the future Payment layout |
 | Decision | NARROW / PROCEED | The architecture is viable with precise privacy language | Do not claim anonymity or permanent secrecy |
-| Phase 4 | LOCAL PASS / LIVE PENDING | Full Payment state machine, strict roles, deterministic Crank target, terminal redaction, IDL/client generation, 21 tests, clippy, and optimized SBF build pass locally | Simulate and then prove the real lifecycle on the Private ER/Devnet |
+| Phase 4 | LOCAL PASS / LIVE UPGRADE PASS / LIFECYCLE PENDING | Full Payment state machine, strict roles, deterministic Crank target, terminal redaction, IDL/client generation, 21 tests, clippy, optimized SBF build, and byte-for-byte verified Devnet deployment pass | Prove the real payment lifecycle and Crank path on the Private ER/Devnet |
 | Phase 5 | WAITING | — | Build the 30-second product UI only after Phase 4 live tests pass |
 | Phase 6 | WAITING | — | End-to-end evidence, video, deployment, and submission |
 
