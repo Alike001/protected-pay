@@ -78,6 +78,7 @@
     "p4:v2:send:recipient-acknowledgement": "tsx scripts/p4-v2-recipient-acknowledgement.ts --approved-p4-v2-recipient-tee-acknowledgement-simulation --send --approved-p4-v2-recipient-acknowledgement",
     "p4:v21:auth:simulate:recipient-acknowledgement": "tsx scripts/p4-v2-recipient-acknowledgement.ts --v21-settlement --approved-p4-v21-recipient-tee-acknowledgement-simulation",
     "p4:v21:send:recipient-acknowledgement": "tsx scripts/p4-v2-recipient-acknowledgement.ts --v21-settlement --approved-p4-v21-recipient-tee-acknowledgement-simulation --send --approved-p4-v21-recipient-acknowledgement",
+    "p4:v21:auth:simulate:recipient-claim": "tsx scripts/p4-v2-recipient-acknowledgement.ts --v21-settlement --claim --approved-p4-v21-recipient-tee-settlement-claim-simulation",
     "p4:v21:preflight:stalled-recovery": "tsx scripts/p4-v21-recover-stalled-payment.ts",
     "p4:v21:auth:simulate:stalled-recovery": "tsx scripts/p4-v21-recover-stalled-payment.ts --approved-p4-v21-tee-auth-stalled-recovery-simulation",
     "p4:v21:send:stalled-recovery": "tsx scripts/p4-v21-recover-stalled-payment.ts --approved-p4-v21-tee-auth-stalled-recovery-simulation --send --approved-p4-v21-stalled-payment-recovery",

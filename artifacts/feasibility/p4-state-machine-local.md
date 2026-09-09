@@ -1484,3 +1484,54 @@ Hardware attestation independently verified: false
 ```
 
 The Payment is now privately `Acknowledged` with its 1 test-USDC liability still held by the shared Payment. No wallet needs to remain online: the next due Crank execution should advance it to `Settled`. Verifying that private transition requires a fresh, separately approved recipient authentication; claiming the settled liability requires another separately approved signed transaction.
+
+## Version-2.1 autonomous settlement and recipient-claim simulation
+
+After explicit approval, the recipient completed a new Query Filtering Service challenge and read the exact live Payment plus only their own Deposit. The Payment was already `Settled`: neither sender nor recipient had submitted a settlement transaction after acknowledgement, and the stored six-iteration task is signer-free and targets only this Payment. The Crank therefore completed the required `Acknowledged -> Settled` transition without either wallet online.
+
+The claim runner then constructed a recipient-only `claim_payment` transaction. It rejected any sender Deposit account, reproduced the expected settled terminal commitment locally, signed fresh bytes, and submitted them only to signature-verified simulation. The simulated claim credited the recipient's private Deposit, zeroed the sensitive Payment terms, preserved `Settled`, and stored the matching commitment atomically.
+
+```text
+Private ER: https://devnet-tee.magicblock.app
+Authenticated recipient: HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr
+Challenge age: 0 seconds
+Public finalized preflight slot: 495786478
+Private authorized preflight slot: 301003847
+Payment: 71t8qrKg2cFVSceBEFL4RtmKrfhRcMWzyvq4yh4PwikZ
+Task ID: 1788982958472
+Observed at: 1788983572
+Created at: 1788982960
+Settle after: 1788983020
+Expires at: 1788983260
+Live private status: Settled
+Private Payment escrow before claim: 1.000000 test USDC
+Settlement required a sender transaction: false
+Settlement required a recipient transaction: false
+Recipient can read Payment: true
+Recipient can read own Deposit: true
+Recipient can read sender Deposit: false
+Instruction: claim_payment
+Claimant Deposit: DJU7iPmejpGXAxAs3apWA7ZmWob33cnc3ebAZ7YQ5nxK
+Sender Deposit included: false
+Serialized transaction size: 286 bytes
+Prepared, unbroadcast signature: 2RNHteoMxm6KB9m6gakBgJdDtrKaHPNB3ZZA52QEZLNXDhGxFzLFDUQtBVan1iZC9n4KGsQ69PdL4ZSqhauyDThn
+Signed simulation slot: 301003860
+Signature verification: passed
+Simulation error: none
+Compute units consumed: 11,691
+Private ER fee reported by simulation: unavailable
+Payment status after simulated claim: Settled
+Payment redacted after simulated claim: true
+Terminal commitment matches: true
+Recipient available: 0 -> 1.000000 test USDC
+Protected data found in logs: false
+Private state persisted after simulation: false
+Public state changed after simulation: false
+Vault balance changed after simulation: false
+Unauthenticated protected reads: all null
+Bearer token printed or persisted: false
+Hardware attestation independently verified: false
+Transaction broadcast: false
+```
+
+This proves the corrected schedule's successful settlement path and the exact recipient recovery action. The claim simulation is intentionally non-persistent: 1 test USDC remains in Payment escrow until a separate explicit approval authorizes fresh authentication, signature-verified simulation, and broadcast of the recipient claim.

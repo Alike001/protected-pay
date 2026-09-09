@@ -22,6 +22,8 @@ The fresh version-2.1 Payment now passes sender-authenticated, signature-verifie
 
 The separately approved live version-2.1 open and six-call schedule finalized on the Private ER, followed immediately by a recipient-authenticated acknowledgement that also passed signed simulation before broadcast. The Payment is privately `Acknowledged`, 1 test USDC remains in its individual escrow, neither aggregate Deposit was exposed to the other party, and the next Crank observation must prove automatic settlement before recipient claim.
 
+Recipient-authenticated readback now confirms the live Payment autonomously reached `Settled`. A signature-verified claim simulation credits the recipient's private available balance from 0 to 1 test USDC and redacts the Payment behind the verified terminal commitment; the simulation persisted nothing and claim broadcast remains separately gated.
+
 ## Source layout
 
 - `programs/protected-pay`: clean-room Anchor program
