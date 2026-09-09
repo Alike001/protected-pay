@@ -1741,3 +1741,83 @@ Transaction broadcast: false
 ```
 
 This proves construction and privacy behavior only. The live Payment remains unopened with the sender still holding 2 test USDC available. A separate explicit approval must authorize fresh TEE authentication, a new task ID and blockhash, another signature-verified simulation, and broadcast of the atomic transaction. No recipient acknowledgement will be sent during this expiry proof.
+
+## Version-2.1 live autonomous expiry
+
+After separate approval, the sender reauthenticated and the runner repeated the complete private-state validation and signature-verified simulation with a fresh blockhash and task ID. The same 494-byte atomic `open_payment` plus `schedule_payment` transaction then finalized on the Private ER. It moved 1 test USDC only within private accounting into per-Payment escrow and scheduled six Payment-only `advance_payment` calls. No recipient acknowledgement was sent.
+
+A new expiry-specific monitor authenticated only for read access, validated the exact Payment, permission, sender Deposit, public delegated shells, 3 test-USDC vault collateral, and outsider denial, then waited for the terminal transition. It observed `Created` before the deadline and `Expired` eight seconds after the deadline during readback. Private transaction history proved that the configured validator—not the sender—signed all six successful autonomous executions exactly 60 seconds apart. Call six landed precisely at the stored `expiresAt` timestamp.
+
+```text
+Private ER: https://devnet-tee.magicblock.app
+Sender / fee payer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Recipient: HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr
+Payment: AvZwmKkHPvrTHk3qyYCeuTAg2jSSrYM9tLEm4gKUD759
+Payment label: protected-pay:phase4:v2.1:expiry:1
+Fresh public preflight slot: 495816264
+Fresh private preflight slot: 301102706
+Fresh signed simulation slot: 301102730
+Atomic open/schedule signature: sYExmGVU4ibbpMJXJ8mMuPfLe15vZmvySLTN9rBpgAxExf4FHdkmC9D95nY2qBD6auoVsKmB3FyH7vdtbEDD8ZK
+Atomic open/schedule finalized slot: 301102775
+Task ID: 1788988515930
+Created / settle / expiry timestamps: 1788988519 / 1788988579 / 1788988819
+Transaction size: 494 bytes
+Simulation error: none
+Compute units consumed in simulation: 28,270
+Payment escrow after open: 1.000000 test USDC
+Sender available after open: 1.000000 test USDC
+Sender nonce after open: 5
+Schedule cadence: six calls, 60 seconds apart
+Autonomous call 1: slot 301102775, time 1788988519, signature snSKVbY67vf4XBigs6urVQH3tys6qhP2UiNAGFX5DY8QdqQxWoPPasbfSrQh8C6vb1t7MQ4Ki3Lv7rMt7BPKVCe
+Autonomous call 2: slot 301103975, time 1788988579, signature 3fVNEahJEdvDY7VnutqjmfRyjjVbU7HnkTZFBYVtPnpNxvsTVDxzjJ8kHcC1oNvw1Kep7AEVXkFon3PtXg82ogrH
+Autonomous call 3: slot 301105175, time 1788988639, signature 8F3JGFJaVQLy7pV7DdARkFVXVsmhwgwbkMvi3fzh6A4122wohyasn4QUa2M8if9EvY3zgGLKVsUjPZujxrreLEx
+Autonomous call 4: slot 301106375, time 1788988699, signature oVzfmUQHXmBn4mXQ2CF3m8w8NaZEYFB94qXLZzq9BvWubM56iinK7xEvq1VcurQz5aowjo9xgYgsknyK1pEXMFh
+Autonomous call 5: slot 301107575, time 1788988759, signature 25zEZCJusKK252JvzXutb7iv9vgoFBSDMUa3eMD2rHK1xq3m2a7m3pLvDKqEqy1EFGEcSbsoJmE2yNWdvZEcDGQB
+Autonomous call 6: slot 301108775, time 1788988819, signature 3WUT23YC8vgkZX7LyzRWEKUHgLAsoV9grzykAyKbL2szS9bHSf4LmN2KmPD6pB7xyxbWwHfoYTDVhqEszXSJn2vq
+Autonomous fee payer / only signer: MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo
+Sender signature required by autonomous calls: false
+Status after call six: Expired
+Escrow after expiry: 1.000000 test USDC
+Sender available after expiry: 1.000000 test USDC
+SPL token movement: none; private accounting only
+Protected data found in program logs: false
+Public state changed: false
+Vault balance changed: false
+Unauthenticated protected reads: all null
+Bearer token printed or persisted: false
+Hardware attestation independently verified: false
+Financial transaction signed or broadcast by monitor: false
+```
+
+This is the live proof that version 2.1 fixed the earlier five-call cadence defect: the sixth scheduled call exists, lands at the exact 300-second boundary, and expires the unattended Payment without user participation. The next action is a separately gated sender-only claim that must restore the escrow, redact sensitive terms behind the terminal commitment, and reject any duplicate recovery.
+
+## Version-2.1 autonomous-expiry recovery preflight
+
+The proven stalled-payment recovery runner was extended with an isolated expiry mode. Because the corrected Crank already advanced this fixture to `Expired`, the new path constructs only `claim_payment`; it does not repeat `advance_payment`. The mode pins the exact expiry Payment ID, memo hash, task ID, sender balance, and nonce, plus distinct authentication and broadcast approval flags.
+
+The unsigned public preflight validated all delegated account owners and allocations, the unchanged empty public Payment shell, both user Deposit shells, 3 test USDC of vault collateral, and continued unauthenticated denial. It identified the sender as the only future signer and proved that the recipient signature and recipient Deposit are unnecessary. No keypair was loaded, no TEE authentication message or transaction was signed, and nothing was broadcast.
+
+```text
+Cluster: Solana Devnet and MagicBlock Private ER
+Finalized public read slot: 495821953
+Payment: AvZwmKkHPvrTHk3qyYCeuTAg2jSSrYM9tLEm4gKUD759
+Payment label: protected-pay:phase4:v2.1:expiry:1
+Sender Deposit: 5gUmsQ4sxHvWrKTvbt8Vn4mDzVNH3xAaC11Tarj7uehB
+Recipient Deposit: DJU7iPmejpGXAxAs3apWA7ZmWob33cnc3ebAZ7YQ5nxK
+Proposed instruction: claim_payment
+Future signer and fee payer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Expected private-accounting recovery: 1.000000 test USDC
+Recipient signature required: false
+Recipient Deposit required: false
+SPL token movement: none; private accounting only
+Vault collateral: 3.000000 test USDC
+Delegated owners and allocations valid: true
+Public shell still hides private state: true
+Unauthenticated protected reads: all null
+Keypair loaded: false
+TEE authentication signed: false
+Transaction signed: false
+Transaction broadcast: false
+```
+
+The next checkpoint requires separate approval to authenticate the sender, validate the live `Expired` Payment and sender-only balance, and run a signature-verified claim simulation. That simulation must restore sender available accounting `1 -> 2` test USDC, clear the escrow, redact all sensitive fields behind the independently reproduced terminal commitment, and persist nothing.

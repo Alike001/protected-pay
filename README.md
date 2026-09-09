@@ -28,7 +28,7 @@ The approved recipient claim subsequently finalized on the Private ER. The recip
 
 A separate deterministic version-2.1 expiry fixture is now delegated on Devnet. Its empty Payment shell and permission were created and then delegated in separately approved, simulation-first transactions. Both temporary delegation buffers closed, persistent records and metadata exist, no USDC moved, and neither private Deposit changed.
 
-The sender-authenticated expiry transaction now passes signature-verified Private ER simulation. Atomic `open_payment` plus `schedule_payment` would move 1 test USDC from the sender's private available balance into individual Payment escrow and register six Payment-only Crank calls. The simulation persisted nothing, exposed no protected arguments in logs, and kept unauthenticated reads denied. Live broadcast remains separately approval-gated.
+The separately approved sender-authenticated expiry transaction finalized on the Private ER, moving 1 test USDC from the sender's private available balance into individual Payment escrow and registering six Payment-only Crank calls. All six validator-signed executions finalized exactly 60 seconds apart without the sender online; the first five were safe no-ops and call six changed the Payment from `Created` to `Expired` at the exact 300-second boundary. The escrow remains intact for the sender's separately gated recovery claim, protected arguments stayed out of logs, public state did not change, and unauthenticated reads remain denied.
 
 ## Source layout
 

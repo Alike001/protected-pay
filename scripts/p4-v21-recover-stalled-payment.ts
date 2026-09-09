@@ -38,8 +38,11 @@ import {
 } from "./gate1-simulate-delegation.ts";
 import { authenticatePrivateEr, PRIVATE_ER_ORIGIN } from "./private-er-auth.ts";
 import {
+  deriveV21ExpiryAddresses,
   deriveV2SettlementAddresses,
   V2_RECIPIENT,
+  V21_EXPIRY_PAYMENT_ID,
+  V21_EXPIRY_PAYMENT_LABEL,
   V2_SETTLEMENT_PAYMENT_ID,
   V2_SETTLEMENT_PAYMENT_LABEL,
 } from "./p4-v2-settlement-bootstrap.ts";
@@ -47,9 +50,13 @@ import {
 const DEFAULT_BASE_RPC_URL = "https://api.devnet.solana.com" as const;
 const BASE_RPC_URL = (process.env.SOLANA_RPC_URL ??
   DEFAULT_BASE_RPC_URL) as typeof DEFAULT_BASE_RPC_URL;
-const AUTH_APPROVAL_FLAG =
-  "--approved-p4-v21-tee-auth-stalled-recovery-simulation";
-const SEND_APPROVAL_FLAG = "--approved-p4-v21-stalled-payment-recovery";
+const EXPIRY_MODE = process.argv.includes("--v21-expiry");
+const AUTH_APPROVAL_FLAG = EXPIRY_MODE
+  ? "--approved-p4-v21-expiry-tee-auth-recovery-simulation"
+  : "--approved-p4-v21-tee-auth-stalled-recovery-simulation";
+const SEND_APPROVAL_FLAG = EXPIRY_MODE
+  ? "--approved-p4-v21-expiry-recovery"
+  : "--approved-p4-v21-stalled-payment-recovery";
 const AUTH_APPROVED = process.argv.includes(AUTH_APPROVAL_FLAG);
 const SEND_REQUESTED = process.argv.includes("--send");
 const PAYMENT_SIZE = 245;
@@ -58,12 +65,26 @@ const PERMISSION_SIZE = 567;
 const TOKEN_ACCOUNT_SIZE = 165;
 const TOTAL_VAULT_AMOUNT = 3_000_000n;
 const PAYMENT_AMOUNT = 1_000_000n;
-const PRIVATE_AVAILABLE_BEFORE = 2_000_000n;
-const PRIVATE_AVAILABLE_AFTER = 3_000_000n;
-const EXPECTED_TASK_ID = 1_788_965_539_251n;
+const PRIVATE_AVAILABLE_BEFORE = EXPIRY_MODE ? 1_000_000n : 2_000_000n;
+const PRIVATE_AVAILABLE_AFTER = EXPIRY_MODE ? 2_000_000n : 3_000_000n;
+const EXPECTED_NONCE = EXPIRY_MODE ? 5n : 3n;
+const EXPECTED_TASK_ID = EXPIRY_MODE ? 1_788_988_515_930n : 1_788_965_539_251n;
+const PAYMENT_ID = EXPIRY_MODE
+  ? V21_EXPIRY_PAYMENT_ID
+  : V2_SETTLEMENT_PAYMENT_ID;
+const PAYMENT_LABEL = EXPIRY_MODE
+  ? V21_EXPIRY_PAYMENT_LABEL
+  : V2_SETTLEMENT_PAYMENT_LABEL;
+const EXPECTED_STATUS_BEFORE = EXPIRY_MODE
+  ? PaymentStatus.Expired
+  : PaymentStatus.Created;
 const EXPECTED_MEMO_HASH = new Uint8Array(
   createHash("sha256")
-    .update("invoice:prototype-v2-settlement-001:consulting-services")
+    .update(
+      EXPIRY_MODE
+        ? "invoice:prototype-v21-expiry-001:consulting-services"
+        : "invoice:prototype-v2-settlement-001:consulting-services",
+    )
     .digest(),
 );
 const ZERO_32 = new Uint8Array(32);
@@ -92,7 +113,8 @@ function bytesEqual(
 function json(value: unknown): string {
   return JSON.stringify(
     value,
-    (_key, item: unknown) => (typeof item === "bigint" ? item.toString() : item),
+    (_key, item: unknown) =>
+      typeof item === "bigint" ? item.toString() : item,
     2,
   );
 }
@@ -168,13 +190,17 @@ if (SEND_REQUESTED && !AUTH_APPROVED) {
   throw new Error(`Refusing to sign or send without ${AUTH_APPROVAL_FLAG}`);
 }
 if (SEND_REQUESTED && !process.argv.includes(SEND_APPROVAL_FLAG)) {
-  throw new Error(`Refusing to broadcast recovery without ${SEND_APPROVAL_FLAG}`);
+  throw new Error(
+    `Refusing to broadcast recovery without ${SEND_APPROVAL_FLAG}`,
+  );
 }
 if (!SEND_REQUESTED && process.argv.includes(SEND_APPROVAL_FLAG)) {
   throw new Error("Recovery broadcast approval requires --send");
 }
 
-const addresses = await deriveV2SettlementAddresses();
+const addresses = EXPIRY_MODE
+  ? await deriveV21ExpiryAddresses()
+  : await deriveV2SettlementAddresses();
 const baseRpc = createSolanaRpc(BASE_RPC_URL);
 const baseState = await baseRpc
   .getMultipleAccounts(
@@ -243,7 +269,11 @@ const publicSenderDeposit = getDepositDecoder().decode(
 const publicRecipientDeposit = getDepositDecoder().decode(
   accountBytes(publicRecipientDepositAccount.data),
 );
-assertDiscriminator(publicPayment.discriminator, PAYMENT_DISCRIMINATOR, "Payment");
+assertDiscriminator(
+  publicPayment.discriminator,
+  PAYMENT_DISCRIMINATOR,
+  "Payment",
+);
 assertDiscriminator(
   publicSenderDeposit.discriminator,
   DEPOSIT_DISCRIMINATOR,
@@ -255,7 +285,7 @@ assertDiscriminator(
   "Recipient Deposit",
 );
 if (
-  !bytesEqual(publicPayment.paymentId, V2_SETTLEMENT_PAYMENT_ID) ||
+  !bytesEqual(publicPayment.paymentId, PAYMENT_ID) ||
   publicPayment.sender !== AUTHORITY ||
   publicPayment.recipient !== V2_RECIPIENT ||
   publicPayment.tokenMint !== USDC_MINT ||
@@ -319,7 +349,7 @@ if (!AUTH_APPROVED) {
       publicPreflight: {
         cluster: "Solana Devnet and MagicBlock Private ER",
         finalizedReadSlot: baseState.context.slot,
-        paymentLabel: V2_SETTLEMENT_PAYMENT_LABEL,
+        paymentLabel: PAYMENT_LABEL,
         payment: addresses.payment,
         senderDeposit: addresses.deposit,
         recipientDeposit: addresses.recipientDeposit,
@@ -330,8 +360,10 @@ if (!AUTH_APPROVED) {
       },
       guardedRecoveryPath: {
         executionEnvironment: "MagicBlock Private ER on Solana Devnet",
-        instructions: ["advance_payment", "claim_payment"],
-        atomic: true,
+        instructions: EXPIRY_MODE
+          ? ["claim_payment"]
+          : ["advance_payment", "claim_payment"],
+        atomic: !EXPIRY_MODE,
         signerAndFeePayer: AUTHORITY,
         expectedInternalRecovery: PAYMENT_AMOUNT,
         splTokenMovement: "none; private accounting only",
@@ -389,10 +421,12 @@ if (
   accountBytes(privateSenderDepositAccount.data).length !== DEPOSIT_SIZE ||
   !privatePaymentPermissionAccount ||
   privatePaymentPermissionAccount.owner !== PERMISSION_PROGRAM_ID ||
-  accountBytes(privatePaymentPermissionAccount.data).length !== PERMISSION_SIZE ||
+  accountBytes(privatePaymentPermissionAccount.data).length !==
+    PERMISSION_SIZE ||
   !privateSenderPermissionAccount ||
   privateSenderPermissionAccount.owner !== PERMISSION_PROGRAM_ID ||
-  accountBytes(privateSenderPermissionAccount.data).length !== PERMISSION_SIZE ||
+  accountBytes(privateSenderPermissionAccount.data).length !==
+    PERMISSION_SIZE ||
   recipientDepositForSender !== null
 ) {
   throw new Error("Sender private-state permission boundary is invalid");
@@ -415,7 +449,7 @@ assertDiscriminator(
 );
 const now = BigInt(Math.floor(Date.now() / 1000));
 if (
-  !bytesEqual(paymentBefore.paymentId, V2_SETTLEMENT_PAYMENT_ID) ||
+  !bytesEqual(paymentBefore.paymentId, PAYMENT_ID) ||
   paymentBefore.sender !== AUTHORITY ||
   paymentBefore.recipient !== V2_RECIPIENT ||
   paymentBefore.tokenMint !== USDC_MINT ||
@@ -425,7 +459,7 @@ if (
   paymentBefore.expiresAt - paymentBefore.createdAt !== 300n ||
   paymentBefore.expiresAt >= now ||
   paymentBefore.taskId !== EXPECTED_TASK_ID ||
-  paymentBefore.status !== PaymentStatus.Created ||
+  paymentBefore.status !== EXPECTED_STATUS_BEFORE ||
   !bytesEqual(paymentBefore.memoHash, EXPECTED_MEMO_HASH) ||
   !bytesEqual(paymentBefore.terminalCommitment, ZERO_32) ||
   !paymentBefore.initialized ||
@@ -435,7 +469,7 @@ if (
   senderDepositBefore.tokenMint !== USDC_MINT ||
   senderDepositBefore.available !== PRIVATE_AVAILABLE_BEFORE ||
   senderDepositBefore.locked !== 0n ||
-  senderDepositBefore.nextPaymentNonce !== 3n ||
+  senderDepositBefore.nextPaymentNonce !== EXPECTED_NONCE ||
   senderDepositBefore.automationPaused ||
   senderDepositBefore.version !== 1
 ) {
@@ -450,8 +484,10 @@ if (
 
 const expectedTerminalCommitment = terminalCommitment(paymentBefore);
 const instructions = [
-  getSetComputeUnitLimitInstruction({ units: 120_000 }),
-  getAdvancePaymentInstruction({ payment: addresses.payment }),
+  getSetComputeUnitLimitInstruction({ units: EXPIRY_MODE ? 80_000 : 120_000 }),
+  ...(EXPIRY_MODE
+    ? []
+    : [getAdvancePaymentInstruction({ payment: addresses.payment })]),
   getClaimPaymentInstruction({
     claimant: authentication.signerClient.identity,
     payment: addresses.payment,
@@ -464,8 +500,12 @@ const { value: latestBlockhash } = await privateRpc
 const message = pipe(
   createTransactionMessage({ version: 0 }),
   (current) =>
-    setTransactionMessageFeePayerSigner(authentication.signerClient.payer, current),
-  (current) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, current),
+    setTransactionMessageFeePayerSigner(
+      authentication.signerClient.payer,
+      current,
+    ),
+  (current) =>
+    setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, current),
   (current) => appendTransactionMessageInstructions(instructions, current),
 );
 const signedTransaction = await signTransactionMessageWithSigners(message);
@@ -474,7 +514,9 @@ assertIsTransactionWithinSizeLimit(signedTransaction);
 const wire = getBase64EncodedWireTransaction(signedTransaction);
 const serializedBytes = Buffer.from(wire, "base64").length;
 if (serializedBytes > 1_232) {
-  throw new Error(`Atomic recovery is ${serializedBytes} bytes; Solana limit is 1232`);
+  throw new Error(
+    `Atomic recovery is ${serializedBytes} bytes; Solana limit is 1232`,
+  );
 }
 const preparedSignature = getSignatureFromTransaction(signedTransaction);
 const simulation = await privateRpc
@@ -514,7 +556,9 @@ if (
   simulatedSenderDepositAccount.owner !== PROGRAM_ID ||
   accountBytes(simulatedSenderDepositAccount.data).length !== DEPOSIT_SIZE
 ) {
-  throw new Error("Recovery simulation returned invalid account owners or lengths");
+  throw new Error(
+    "Recovery simulation returned invalid account owners or lengths",
+  );
 }
 const paymentAfter = getPaymentDecoder().decode(
   accountBytes(simulatedPaymentAccount.data),
@@ -553,8 +597,10 @@ if (
   senderDepositAfter.tokenMint !== senderDepositBefore.tokenMint ||
   senderDepositAfter.available !== PRIVATE_AVAILABLE_AFTER ||
   senderDepositAfter.locked !== 0n ||
-  senderDepositAfter.nextPaymentNonce !== senderDepositBefore.nextPaymentNonce ||
-  senderDepositAfter.automationPaused !== senderDepositBefore.automationPaused ||
+  senderDepositAfter.nextPaymentNonce !==
+    senderDepositBefore.nextPaymentNonce ||
+  senderDepositAfter.automationPaused !==
+    senderDepositBefore.automationPaused ||
   senderDepositAfter.version !== senderDepositBefore.version
 ) {
   throw new Error(
@@ -578,10 +624,10 @@ if (
 const [privateAfterSimulation, publicAfterSimulation, unauthenticatedAfter] =
   await Promise.all([
     privateRpc
-      .getMultipleAccounts(
-        [addresses.payment, addresses.deposit],
-        { commitment: "confirmed", encoding: "base64" },
-      )
+      .getMultipleAccounts([addresses.payment, addresses.deposit], {
+        commitment: "confirmed",
+        encoding: "base64",
+      })
       .send(),
     baseRpc
       .getMultipleAccounts(
@@ -622,10 +668,15 @@ if (
     accountBytes(publicDepositAfterSimulation.data),
     accountBytes(publicSenderDepositAccount.data),
   ) ||
-  !bytesEqual(accountBytes(vaultAfter.data), accountBytes(vaultTokenAccount.data)) ||
+  !bytesEqual(
+    accountBytes(vaultAfter.data),
+    accountBytes(vaultTokenAccount.data),
+  ) ||
   unauthenticatedAfter.value.some((account) => account !== null)
 ) {
-  throw new Error("Simulation persisted state or weakened the privacy boundary");
+  throw new Error(
+    "Simulation persisted state or weakened the privacy boundary",
+  );
 }
 
 console.log(
@@ -639,7 +690,7 @@ console.log(
       tokenStored: false,
       hardwareAttestationIndependentlyVerified: false,
     },
-    stalledPayment: {
+    recoverablePayment: {
       payment: addresses.payment,
       taskId: paymentBefore.taskId,
       observedAt: now,
@@ -650,8 +701,10 @@ console.log(
     },
     simulationOnlyTransaction: {
       cluster: "MagicBlock Private ER on Solana Devnet",
-      instructions: ["advance_payment", "claim_payment"],
-      atomic: true,
+      instructions: EXPIRY_MODE
+        ? ["claim_payment"]
+        : ["advance_payment", "claim_payment"],
+      atomic: !EXPIRY_MODE,
       feePayerAndSigner: AUTHORITY,
       payment: addresses.payment,
       claimantDeposit: addresses.deposit,
@@ -744,10 +797,10 @@ if (SEND_REQUESTED) {
   let confirmedDeposit;
   for (let poll = 0; poll < 40; poll += 1) {
     const response = await privateRpc
-      .getMultipleAccounts(
-        [addresses.payment, addresses.deposit],
-        { commitment: "confirmed", encoding: "base64" },
-      )
+      .getMultipleAccounts([addresses.payment, addresses.deposit], {
+        commitment: "confirmed",
+        encoding: "base64",
+      })
       .send();
     const [paymentAccount, depositAccount] = response.value;
     if (
@@ -778,7 +831,9 @@ if (SEND_REQUESTED) {
     await wait(250);
   }
   if (!confirmedPayment || !confirmedDeposit) {
-    throw new Error("Confirmed recovery state was not visible in private readback");
+    throw new Error(
+      "Confirmed recovery state was not visible in private readback",
+    );
   }
 
   const [publicAfterSend, unauthenticatedAfterSend] = await Promise.all([
