@@ -69,12 +69,11 @@ SHA-256: e12298b94a74a7113cde7cd0334fc0e6145e6482eda44ab9a336f0a39286d14a
 
 Before Phase 5:
 
-1. update the existing Config timing policy from the feasibility values to 60/300 seconds;
-2. create and delegate a real Payment shell and recipient Deposit/permissions;
-3. execute open, acknowledge, cancel, settle, and expiry through the authenticated Private ER;
-4. prove a real five-run Crank task advances a Payment with both users offline;
-5. re-run the unauthorized-read and public metadata audit for the Payment layout;
-6. redact, commit/undelegate, and verify final public state before withdrawal.
+1. create and delegate a real Payment shell and recipient Deposit/permissions;
+2. execute open, acknowledge, cancel, settle, and expiry through the authenticated Private ER;
+3. prove a real five-run Crank task advances a Payment with both users offline;
+4. re-run the unauthorized-read and public metadata audit for the Payment layout;
+5. redact, commit/undelegate, and verify final public state before withdrawal.
 
 ## Read-only Devnet upgrade preflight
 
@@ -147,7 +146,7 @@ Remaining authority-owned buffers: none
 
 The dumped on-chain bytecode and local optimized artifact were both 635,136 bytes and matched byte-for-byte by SHA-256. The temporary buffer was consumed and closed, its rent was refunded, and all temporary recovered key files were deleted from the in-memory temporary directory.
 
-## Timing-policy update preflight
+## Timing-policy update preflight and live result
 
 The guarded Phase 4 timing-policy client validated the finalized Config owner, 154-byte allocation, discriminator, stored authority, Circle Devnet USDC mint, SPL Token program, Private ER validator, and current `300/86400` policy. It then simulated the proposed `60/300` update with a no-op signer, so no signature or broadcast was possible.
 
@@ -167,4 +166,19 @@ Signed: false
 Broadcast: false
 ```
 
-The Config allocation and rent remained unchanged in simulation. The program copies these windows into a Payment when it opens, so the policy update affects future payments and does not shorten deadlines already stored in an active Payment. Live submission remains approval-gated.
+The Config allocation and rent remained unchanged in simulation. The program copies these windows into a Payment when it opens, so the policy update affects future payments and does not shorten deadlines already stored in an active Payment.
+
+After approval, the guarded client repeated the unsigned checks, loaded the exact Config authority, and ran a signature-verified simulation before submission. The transaction finalized and a separate RPC confirmation plus Config transaction-history lookup returned the same signature.
+
+```text
+Signed preflight error: null
+Signed preflight compute units: 4,962
+Finalized transaction: 5S1oPJoA3xCTGcvrj5zhdEHKoXPEHHHJ7WXTPrr5QWgc38EjLWWBmoK8gFERQd3upQdUCLHyk66V8Zed2GF22Xt6
+Final Config safety/claim windows: 60 / 300 seconds
+Fee paid: 5,000 lamports
+Authority balance: 6.73589872 SOL -> 6.73589372 SOL
+SOL transferred: 0
+Tokens transferred: none
+```
+
+The finalized post-state revalidated the Config program owner, 154-byte allocation, discriminator, identity fields, and exact `60/300` policy.
