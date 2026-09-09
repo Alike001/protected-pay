@@ -1614,3 +1614,41 @@ Broadcast: false
 ```
 
 This checkpoint proves safe construction of the new base-Devnet shell and permission only. A separate explicit approval is required to load the sender signer, rerun signature-verified simulation with a fresh blockhash, and broadcast their creation. Delegation and the private unattended-expiry lifecycle remain later gates.
+
+## Version-2.1 fresh expiry bootstrap broadcast
+
+After separate explicit approval, the bootstrap runner revalidated the finalized pre-state, rebuilt the transaction with a fresh blockhash, loaded only the sender signer, and repeated signature-verified simulation before submission. The same 464-byte transaction created the empty Payment shell and its two-member Permission account on Solana Devnet.
+
+The runner's finalized readback and an independent Solana CLI confirmation agree on the transaction, account identities, exact fee and rent, and successful status. The Payment remains an unopened version-2 shell with amount zero. No SPL tokens moved and neither delegated private Deposit was included or mutated.
+
+```text
+Cluster: Solana Devnet
+Finalized pre-state slot: 495792332
+Unsigned simulation slot: 495792369
+Program: w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk
+Payment label: protected-pay:phase4:v2.1:expiry:1
+Payment ID: 759c4e3fbf3ad9a11c1797e1db3f7e27d0cc4110956e07e0d10aaf1dd005b4a0
+Payment: AvZwmKkHPvrTHk3qyYCeuTAg2jSSrYM9tLEm4gKUD759
+Payment permission: Acg1YJySxHLLFwiFmQ4u5s3EpphtX2emGFGGKiPXAnPw
+Fee payer and only signer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Instructions: prepare_payment, create_payment_permission
+Prepared/finalized signature: 3DjD3KM6Nst7AiExEDqXsCHzu3XshaedU4tjmG7Xxjr5AnWM5e5RLwUByUKji8w6BsseK2z3LSS7EPnfhfdZCkUk
+Transaction execution slot: 495792381
+Finalized readback slot: 495792389
+Transaction size: 464 bytes
+Signed simulation error: none
+Compute units consumed: 33,814
+Transaction fee: 5,000 lamports
+Payment rent: 1,894,840 lamports
+Permission rent: 3,530,600 lamports
+Total fee plus rent: 5,430,440 lamports
+Authority balance: 6.69407736 -> 6.68864692 SOL
+Payment version / amount / initialized: 2 / 0 / false
+Sender and recipient publicly named by shell: true
+Existing private Deposits included or mutated: false
+USDC moved: 0
+User-to-user SOL transfer: 0
+Independent transaction status: finalized, Ok
+```
+
+This completes only the base-layer bootstrap. The next checkpoint is unsigned delegation simulation for exactly this Payment and permission; loading a signer or broadcasting delegation still requires a separate explicit approval.
