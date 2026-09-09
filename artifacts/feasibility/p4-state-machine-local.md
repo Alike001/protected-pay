@@ -1123,3 +1123,31 @@ Simulation compute units: 2,370
 ```
 
 An independent CLI confirmation returned `finalized`. A separate program read returned loader-v3 ownership, the expected ProgramData address, preserved authority, deployment slot `495731340`, and the unchanged 635,136-byte allocation. An independent balance read returned exactly `6.70412544 SOL`, while a direct Buffer lookup returned `AccountNotFound`. No token accounts or private Payment state were involved in this loader transaction.
+
+## Version-2.1 stalled-payment recovery preflight
+
+The payment schedule that exposed the immediate-first-iteration behavior left one version-2 Payment in private `Created` state with 1 test USDC in its individual escrow. After deploying the compatible version-2.1 code, a guarded recovery client was added to combine permissionless `advance_payment` and sender-authorized `claim_payment` in one atomic Private ER transaction. This removes the intermediate failure window: either the Payment becomes `Expired` and the sender receives the internal credit, or neither mutation persists.
+
+The first approved continuation was intentionally unsigned. It validated the public delegated shells, exact identities, owners, discriminators, and allocations for the Payment, both Deposits, and all three permissions. It also validated the SPL Token vault's mint, authority, and exact collateral, then confirmed that an unauthenticated Private ER client could read none of the three protected financial accounts.
+
+```text
+Public finalized preflight slot: 495738390
+Payment: 83JoRQii6JKQV5hziNgrrpoYmrzTom8h25gSVWEGpjNK
+Sender Deposit: 5gUmsQ4sxHvWrKTvbt8Vn4mDzVNH3xAaC11Tarj7uehB
+Recipient Deposit: DJU7iPmejpGXAxAs3apWA7ZmWob33cnc3ebAZ7YQ5nxK
+Delegated owners and allocations valid: true
+Public Payment shell exposes private open state: false
+Unauthenticated protected reads: all null
+Vault collateral: 3.000000 test USDC
+Proposed instructions: advance_payment, claim_payment
+Proposed execution: atomic
+Expected internal recovery: 1.000000 test USDC
+Recipient signature required: false
+Recipient Deposit required: false
+SPL token movement: none; private accounting only
+TEE authentication signed: false
+Transaction signed: false
+Transaction broadcast: false
+```
+
+The preflight deliberately cannot claim that the current private state is unchanged: that fact is hidden from unauthenticated readers by the permission boundary. The next separately approved checkpoint must authenticate the exact sender, validate the live Payment remains expired-but-`Created` with 1 test USDC escrowed, and run a signature-verified simulation proving `Created -> Expired -> claimed/redacted` plus sender available balance `2 -> 3` test USDC. Broadcast remains a further separate approval.
