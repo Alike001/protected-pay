@@ -1986,3 +1986,36 @@ Transactions broadcast: false
 ```
 
 This completes the live state-machine retry proof: automated calls are harmless after terminal resolution, and the value-moving claim cannot execute twice. The remaining Phase 4 work is the corrected-layout privacy audit and a terminal commit/undelegate proof.
+
+## Version-2.1 corrected-layout privacy and closeout preflight
+
+A dedicated read-only runner audited the live expiry Payment from public Solana and unauthenticated Private ER viewpoints. The corrected layout passed the intended narrow boundary: the public shell and Permission expose both wallets, payment ID, mint, membership/capabilities, validator, delegation records, PDA metadata, and timing, while unauthenticated reads reveal none of the live Payment or either Deposit.
+
+The known private recovery receipt remained externally discoverable by signature, slot, block time, and success, but its unauthenticated response contained zero account keys, instructions, logs, pre-balances, or post-balances. The public vault still contains 3 test USDC and both aggregate Deposits remain delegated.
+
+The runner also constructed the exact terminal `commit_and_undelegate_payment` transaction with a no-op signer. The 320-byte transaction commits only the redacted Payment, contains no SPL Token instructions, moves no USDC, and excludes the sender Deposit, recipient Deposit, and Payment Permission. It was not authenticated, signed, simulated, or broadcast.
+
+```text
+Finalized public read slot: 495834477
+Unauthenticated Private ER read slot: 301163020
+Payment: AvZwmKkHPvrTHk3qyYCeuTAg2jSSrYM9tLEm4gKUD759
+Payment permission: Acg1YJySxHLLFwiFmQ4u5s3EpphtX2emGFGGKiPXAnPw
+Public permission members: Protected Pay program, sender, recipient
+Public payment delegation slot: 495794202
+Public shell amount/times/task/memo: zero
+Unauthenticated Payment and Deposit reads: all null
+Unauthenticated recovery receipt details: all redacted
+Vault collateral: 3.000000 test USDC
+Prepared instruction: commit_and_undelegate_payment
+Prepared transaction size: 320 bytes
+Required signer / fee payer: sender
+Committed accounts: Payment only
+Aggregate Deposits committed: false
+SPL token movement: none
+Keypair loaded: false
+TEE authentication signed: false
+Transaction signed: false
+Transaction broadcast: false
+```
+
+The public-after-commit result remains unproven. The next checkpoint requires separate approval for sender TEE authentication and signature-verified simulation only. Broadcast must remain behind another approval after the simulation output is reviewed.

@@ -1,6 +1,6 @@
 # G3 — Permission And Commitment Privacy Audit
 
-Status: **NARROW PASS for the deployed feasibility layouts; unrelated-wallet denial is proven, independent hardware attestation and the future Payment layout still require separate review**
+Status: **NARROW PASS; unrelated-wallet denial and the corrected Payment's pre-commit field boundary are proven, while independent hardware attestation and the public post-commit result remain separate checks**
 
 The product's claim is deliberately narrow: only state transitions performed after delegation inside an authenticated Private ER may be described as private. Funding, withdrawal, wallet-to-Deposit linkage, permission membership and capabilities, account addresses, the pre-delegation balance snapshot, transaction timing, and committed terminal data are observable or may become observable and must be disclosed.
 
@@ -152,3 +152,36 @@ The feasibility result is **NARROW**, not an absolute-privacy result:
 - permission membership, delegation metadata, addresses, timing, pre-delegation state, and eventual committed terminal state are public.
 
 Protected Pay may proceed only with language such as **“private while pending inside the authenticated Private ER”**. It must not claim anonymous payments, hidden wallet relationships, hidden funding, hidden timing, or permanent confidentiality after commitment. The future Payment account requires a fresh field-by-field audit before submission, and raw memos must never be committed.
+
+## Corrected version-2.1 Payment audit
+
+The future-layout requirement above is now satisfied for the live version-2.1 expiry fixture. A read-only audit at finalized Devnet slot `495834477` decoded the 245-byte public Payment shell, 567-byte Payment Permission, both delegation records and metadata accounts, the two delegated Deposit shells, and the 3 test-USDC vault. It also repeated unauthenticated Private ER reads and constructed the exact terminal closeout transaction without loading a keypair.
+
+The public pre-delegation Payment shell reveals:
+
+```text
+Payment:        AvZwmKkHPvrTHk3qyYCeuTAg2jSSrYM9tLEm4gKUD759
+Payment ID:     759c4e3fbf3ad9a11c1797e1db3f7e27d0cc4110956e07e0d10aaf1dd005b4a0
+Sender:         6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Recipient:      HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr
+Mint:           Circle Devnet test USDC
+Amount/times:   zero
+Status:         Created
+Initialized:    false
+Redacted:       false
+Version:        2
+```
+
+The public Payment Permission has three members: the Protected Pay program with flags `0`, the sender with all five capability flags (`31`), and the recipient with all five flags (`31`). Its 138 meaningful bytes are followed only by zero padding. Both public delegation records identify validator `MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo`; metadata exposes PDA seeds, rent payer, delegation slot `495794202`, and the account topology. The base layer therefore already reveals the sender-recipient relationship. Protected Pay must not claim anonymous counterparties.
+
+The unauthenticated Private ER returned `null` for the Payment and both Deposit accounts while leaving the public Permission readable. Its unauthenticated view of the known sender recovery transaction exposed only the signature, slot, block time, and successful status; it returned zero account keys, instructions, logs, pre-balances, and post-balances. This verifies that amount, memo hash, live state and deadlines, task ID, and user balances remain protected through this RPC boundary while delegated.
+
+The prepared `commit_and_undelegate_payment` transaction is 320 bytes and requires only the sender as fee payer/signer. It contains no SPL Token instruction, moves no USDC, and commits only the already-redacted Payment. It does not include either aggregate Deposit or the Payment Permission. Based on the independently verified private terminal bytes, commitment is expected to publish sender, payment ID, mint, `Expired` status, initialization/redaction/version fields, and the terminal commitment. Recipient, amount, memo hash, timestamps, task ID, and both aggregate balances should remain absent. This post-commit disclosure is a prediction until authenticated simulation and a separately approved live commitment prove it.
+
+Reproducible no-sign audit:
+
+```sh
+NO_DNA=1 npm run p4:v21:preflight:closeout
+```
+
+No keypair was loaded, no authentication message or transaction was signed, and no transaction was broadcast.
