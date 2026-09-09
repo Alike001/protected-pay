@@ -46,12 +46,18 @@ const PROGRAM_DATA_CAPACITY = 635_136;
 const UPGRADE_VARIANT = 3;
 const APPROVAL_FLAG =
   "--approved-exact-v2-devnet-upgrade-signed-simulation";
+const BROADCAST_APPROVAL_FLAG = "--approved-v2-devnet-program-upgrade";
+const shouldSend = process.argv.includes("--send");
+const broadcastApproved = process.argv.includes(BROADCAST_APPROVAL_FLAG);
 
 if (!process.argv.includes(APPROVAL_FLAG)) {
   throw new Error(`Refusing to sign without ${APPROVAL_FLAG}`);
 }
-if (process.argv.includes("--send")) {
-  throw new Error("This exact-upgrade checkpoint is simulation-only and cannot broadcast");
+if (shouldSend && !broadcastApproved) {
+  throw new Error(`Refusing to broadcast without ${BROADCAST_APPROVAL_FLAG}`);
+}
+if (!shouldSend && broadcastApproved) {
+  throw new Error("Broadcast approval flag requires --send");
 }
 
 const keypairPath = process.env.SOLANA_KEYPAIR_PATH;
@@ -334,6 +340,152 @@ const expectedAuthorityLamportsAfter =
   authorityAccount.lamports - fee + bufferAccount.lamports - programDataTopUp;
 if (simulatedAuthority.lamports !== expectedAuthorityLamportsAfter) {
   throw new Error("Simulated spill/refund accounting invariant failed");
+}
+
+if (shouldSend) {
+  const returnedSignature = await retryRpc("program-upgrade broadcast", () =>
+    rpc
+      .sendTransaction(wire, {
+        encoding: "base64",
+        maxRetries: 5n,
+        preflightCommitment: "confirmed",
+        skipPreflight: false,
+      })
+      .send(),
+  );
+  if (returnedSignature !== preparedSignature) {
+    throw new Error("RPC returned a signature different from the simulated transaction");
+  }
+
+  let finalizedSlot: bigint | undefined;
+  for (let attempt = 1; attempt <= 90; attempt += 1) {
+    const statuses = await retryRpc("upgrade confirmation", () =>
+      rpc
+        .getSignatureStatuses([preparedSignature], {
+          searchTransactionHistory: true,
+        })
+        .send(),
+    );
+    const status = statuses.value[0];
+    if (status?.err != null) {
+      throw new Error(`Upgrade transaction failed: ${json(status.err)}`);
+    }
+    if (status?.confirmationStatus === "finalized") {
+      finalizedSlot = status.slot;
+      break;
+    }
+    await delay(1_000);
+  }
+  if (finalizedSlot === undefined) {
+    throw new Error("Timed out waiting for the upgrade transaction to finalize");
+  }
+
+  const liveState = await retryRpc("finalized upgraded-state verification", () =>
+    rpc
+      .getMultipleAccounts(
+        [PROGRAM_DATA, PROGRAM_ID, BUFFER, EXPECTED_AUTHORITY],
+        { commitment: "finalized", encoding: "base64" },
+      )
+      .send(),
+  );
+  const [liveProgramData, liveProgram, liveBuffer, liveAuthority] =
+    liveState.value;
+  if (!liveProgramData || !liveProgram || !liveAuthority) {
+    throw new Error("Finalized upgrade verification omitted a required account");
+  }
+  if (liveBuffer !== null) {
+    throw new Error("Finalized upgrade did not close the upload buffer");
+  }
+  if (
+    liveProgramData.owner !== UPGRADEABLE_LOADER ||
+    liveProgramData.executable ||
+    liveProgramData.data[1] !== "base64"
+  ) {
+    throw new Error("Finalized ProgramData owner/executable/encoding validation failed");
+  }
+  const liveProgramDataBytes = accountBytes(liveProgramData.data);
+  if (liveProgramDataBytes.length !== programDataBefore.length) {
+    throw new Error("Finalized upgrade changed the ProgramData allocation");
+  }
+  const liveProgramDataView = stateView(liveProgramDataBytes);
+  const liveDeploySlot = liveProgramDataView.getBigUint64(4, true);
+  if (
+    liveProgramDataView.getUint32(0, true) !== 3 ||
+    liveDeploySlot <= deploySlotBefore ||
+    decodeAuthority(liveProgramDataBytes, 12, 13) !== EXPECTED_AUTHORITY
+  ) {
+    throw new Error("Finalized ProgramData metadata transition is invalid");
+  }
+  const liveBytecode = Buffer.from(
+    liveProgramDataBytes.slice(
+      PROGRAM_DATA_METADATA_LENGTH,
+      PROGRAM_DATA_METADATA_LENGTH + binary.length,
+    ),
+  );
+  const liveBytecodeSha256 = createHash("sha256")
+    .update(liveBytecode)
+    .digest("hex");
+  if (liveBytecodeSha256 !== binarySha256 || !liveBytecode.equals(binary)) {
+    throw new Error("Finalized ProgramData bytecode does not match version 2");
+  }
+  if (
+    liveProgramDataBytes
+      .slice(PROGRAM_DATA_METADATA_LENGTH + binary.length)
+      .some((byte) => byte !== 0)
+  ) {
+    throw new Error("Finalized ProgramData trailing allocation was not zeroed");
+  }
+  if (
+    liveProgram.owner !== UPGRADEABLE_LOADER ||
+    !liveProgram.executable ||
+    !Buffer.from(accountBytes(liveProgram.data)).equals(Buffer.from(programState))
+  ) {
+    throw new Error("Finalized Program account invariant failed");
+  }
+  if (
+    liveAuthority.owner !== SYSTEM_PROGRAM ||
+    liveAuthority.executable ||
+    accountBytes(liveAuthority.data).length !== 0
+  ) {
+    throw new Error("Finalized authority account invariant failed");
+  }
+  const liveProgramDataTopUp =
+    liveProgramData.lamports - programDataAccount.lamports;
+  const expectedLiveAuthorityLamports =
+    authorityAccount.lamports - fee + bufferAccount.lamports - liveProgramDataTopUp;
+  if (liveAuthority.lamports !== expectedLiveAuthorityLamports) {
+    throw new Error("Finalized buffer refund/fee accounting invariant failed");
+  }
+
+  console.log(
+    json({
+      cluster: "Solana Devnet",
+      transactionBroadcast: true,
+      confirmationStatus: "finalized",
+      finalizedSignature: preparedSignature,
+      finalizedSlot,
+      instruction: "UpgradeableLoaderInstruction::Upgrade",
+      programId: PROGRAM_ID,
+      programData: PROGRAM_DATA,
+      closedBuffer: BUFFER,
+      feePayerSpillAndUpgradeAuthority: EXPECTED_AUTHORITY,
+      deploySlotBefore,
+      deploySlotAfter: liveDeploySlot,
+      programDataCapacity: PROGRAM_DATA_CAPACITY,
+      deployedBinaryLength: binary.length,
+      deployedBinarySha256: liveBytecodeSha256,
+      trailingAllocationZeroed: true,
+      bufferClosed: true,
+      bufferRentRefundedLamports: bufferAccount.lamports - liveProgramDataTopUp,
+      programDataRentTopUpLamports: liveProgramDataTopUp,
+      feeLamports: fee,
+      authorityLamportsBefore: authorityAccount.lamports,
+      authorityLamportsAfter: liveAuthority.lamports,
+      signedSimulationPassedBeforeBroadcast: true,
+      simulationUnitsConsumed: simulation.value.unitsConsumed,
+    }),
+  );
+  process.exit(0);
 }
 
 const postCheck = await retryRpc("post-simulation live-state check", () =>

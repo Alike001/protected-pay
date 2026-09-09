@@ -41,6 +41,7 @@
     "p4:simulate:program-extend": "tsx scripts/p4-simulate-program-extend.ts",
     "p4:simulate:v2-upgrade": "tsx scripts/p4-simulate-v2-upgrade.ts --approved-v2-devnet-upgrade-signed-simulation",
     "p4:simulate:v2-exact-upgrade": "tsx scripts/p4-simulate-v2-exact-upgrade.ts --approved-exact-v2-devnet-upgrade-signed-simulation",
+    "p4:send:v2-upgrade": "tsx scripts/p4-simulate-v2-exact-upgrade.ts --approved-exact-v2-devnet-upgrade-signed-simulation --send --approved-v2-devnet-program-upgrade",
     "p4:upload:v2-buffer": "tsx scripts/p4-upload-v2-buffer.ts --approved-v2-devnet-buffer-upload",
     "p4:simulate:timing-policy": "tsx scripts/p4-update-timing-policy.ts",
     "p4:send:timing-policy": "tsx scripts/p4-update-timing-policy.ts --send --approved-p4-timing-policy",

@@ -611,7 +611,7 @@ A fresh second pass reconstructed the entire buffer at finalized commitment and 
 
 After explicit approval, the finalized buffer was fetched again from base Devnet and compared byte-for-byte with the pinned local artifact. The guarded client validated the Devnet genesis hash, Program → ProgramData link, loader owners and discriminators, ProgramData and buffer authorities, allocation lengths, fee payer/system ownership, and the complete buffer hash before loading the authority signer.
 
-The exact `UpgradeableLoaderInstruction::Upgrade` account order was taken from the current Solana loader-v3 interface: ProgramData, Program, Buffer, spill account, Rent sysvar, Clock sysvar, and upgrade-authority signer. The authority wallet was also the spill destination and fee payer. The signed transaction was submitted only to `simulateTransaction` with signature verification enabled; the client has no broadcast path.
+The exact `UpgradeableLoaderInstruction::Upgrade` account order was taken from the current Solana loader-v3 interface: ProgramData, Program, Buffer, spill account, Rent sysvar, Clock sysvar, and upgrade-authority signer. The authority wallet was also the spill destination and fee payer. The signed transaction was submitted only to `simulateTransaction` with signature verification enabled. The simulation command omits the independent broadcast-approval flag; the later broadcast path remains guarded by both explicit approval flags.
 
 ```text
 Cluster: Solana Devnet
@@ -645,3 +645,37 @@ Transaction broadcast: no
 ```
 
 The simulation proves the exact loader transition, bytecode replacement, trailing-byte cleanup, buffer closure/refund, and authority accounting. A separate approval is still required to sign and broadcast a fresh transaction with a fresh blockhash. The simulation signature itself is intentionally unbroadcast and will expire.
+
+## Version-2 Devnet program upgrade
+
+After separate explicit broadcast approval, the guarded client repeated every finalized-state and bytecode check, signed a fresh transaction, successfully simulated its exact wire bytes with signature verification enabled, and sent those same bytes to Solana Devnet. The transaction finalized, the loader replaced the live bytecode, preserved the upgrade authority, closed the upload buffer, and refunded its rent.
+
+```text
+Cluster: Solana Devnet
+Instruction: UpgradeableLoaderInstruction::Upgrade
+Program: w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk
+ProgramData: BXX67CiW14MVLku97gfUm4muQKwUc7uDsSrbC9qsYRAj
+Upgrade authority: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Closed buffer: CjV4LC6X8pY6C2uoB7fEGFvXXZvtY7Mg2kGwPvjYhB1r
+Finalized transaction: QrQYw5iREXnDsb3Weq9F3QcCHG9vm8UZ91szBCwFzwcMF42kJZpJfBVwADmCPEqAkDXQLcfXoJ1eBRefhisxusL
+Deploy slot before upgrade: 495532661
+Deploy slot after upgrade: 495652516
+ProgramData capacity: 635,136 bytes
+Deployed binary length: 633,568 bytes
+Deployed binary SHA-256: 5b2f04b8b347a85e5f7f03dc9305709aaaab7fb538738d348919a8811756d6f5
+Independent on-chain dump prefix matched local artifact: true
+Trailing 1,568-byte allocation zeroed: true
+ProgramData rent top-up: 0 SOL
+Buffer-rent refund: 3.21936364 SOL
+Transaction fee: 0.000005 SOL
+Authority balance before: 3.49903488 SOL
+Authority balance after: 6.71839352 SOL
+Exact signed simulation passed immediately before broadcast: true
+Simulation compute units consumed: 2,370
+Finalized confirmation independently checked with Solana CLI: true
+Buffer account absent after finalization: true
+USDC movement: none
+Payment-state mutation: none
+```
+
+This completes the version-2 deployment checkpoint. It changes only executable program bytecode and loader-owned deployment accounts; it does not create a payment, move user funds, or modify an existing payment account. The next checkpoint must exercise the live version-2 state machine through its separately approved product flow.
