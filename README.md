@@ -30,7 +30,7 @@ A separate deterministic version-2.1 expiry fixture is now delegated on Devnet. 
 
 The separately approved sender-authenticated expiry transaction finalized on the Private ER, moving 1 test USDC from the sender's private available balance into individual Payment escrow and registering six Payment-only Crank calls. All six validator-signed executions finalized exactly 60 seconds apart without the sender online; the first five were safe no-ops and call six changed the Payment from `Created` to `Expired` at the exact 300-second boundary. The escrow remains intact for the sender's separately gated recovery claim, protected arguments stayed out of logs, public state did not change, and unauthenticated reads remain denied.
 
-The sender-only expiry claim now passes signature-verified simulation. It restores the simulated sender balance from 1 to 2 test USDC, clears the escrow, and redacts sensitive Payment fields behind an independently reproduced terminal commitment. The recipient signature and Deposit are unnecessary, and the simulation changed no live state. Claim broadcast remains separately approval-gated.
+The separately approved sender-only expiry claim finalized on the Private ER. It restored the sender balance from 1 to 2 test USDC, cleared the escrow, and redacted sensitive Payment fields behind an independently reproduced terminal commitment. A separate authenticated verifier confirmed the exact successful receipt, sender-only signature, terminal state, unchanged public vault and shells, and continued outsider denial. Retry idempotency and final privacy/commit checks remain before UI work.
 
 ## Source layout
 

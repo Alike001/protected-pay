@@ -1863,3 +1863,49 @@ Transaction broadcast: false
 ```
 
 The live Payment remains `Expired` with 1 test USDC in escrow and the sender at 1 test USDC available. A separate explicit approval must authorize fresh TEE authentication, a fresh signature-verified simulation, and broadcast of the sender-only claim.
+
+## Version-2.1 autonomous-expiry recovery broadcast
+
+After separate explicit approval, the runner reauthenticated the sender, revalidated the live pre-claim state, and repeated signature-verified simulation with a fresh blockhash. The same 286-byte, sender-only `claim_payment` transaction then finalized on the Private ER. It credited the escrow back to the sender's private available balance, cleared the Payment liability, and redacted sensitive terms behind the exact independently reproduced terminal commitment.
+
+The standard Solana CLI could not render this Private ER transaction because its response contains no conventional fee value and the CLI panicked while formatting that optional field. A separate guarded verifier therefore authenticated in a new process, fetched the exact transaction directly through JSON-RPC, and independently validated its signature, sole signer, successful Protected Pay logs, and terminal account state. This tooling limitation does not indicate a transaction failure.
+
+```text
+Private ER: https://devnet-tee.magicblock.app
+Sender / claimant / sole signer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Payment: AvZwmKkHPvrTHk3qyYCeuTAg2jSSrYM9tLEm4gKUD759
+Sender Deposit: 5gUmsQ4sxHvWrKTvbt8Vn4mDzVNH3xAaC11Tarj7uehB
+Fresh observed time: 1788989891
+Expired by at fresh preflight: 1,072 seconds
+Fresh signed simulation slot: 301130240
+Finalized signature: 3aHSwTwad1nTxxGiB8DeEPPETyQkQH5B453HSVKvqej53Mz5P4HXaZHTrCG5WceXQ7484zgkEacUz3rcD2GeZPEG
+Finalized Private ER slot: 301130266
+Block time: 1788989893
+Instruction: claim_payment
+Transaction size: 286 bytes
+Simulation error: none
+Compute units consumed in simulation: 10,193
+Transaction receipt error: none
+Protected Pay receipt status: success
+Payment status: Expired
+Payment redacted: true
+Payment escrow: 0
+Terminal commitment matches: true
+Sender available: 1.000000 -> 2.000000 test USDC
+Sender locked: 0
+Sender nonce: 5
+Recipient Deposit included or visible to sender: false
+SPL token movement: none; private accounting only
+Protected data found in logs: false
+Independent private read slot: 301134158
+Independent public finalized slot: 495825789
+Public state changed: false
+Vault balance changed: false
+Vault collateral: 3.000000 test USDC
+Unauthenticated protected reads: all null
+Bearer token printed or persisted: false
+Hardware attestation independently verified: false
+Independent verifier signed or broadcast a financial transaction: false
+```
+
+This completes the corrected live unattended-expiry lifecycle: private open, six autonomous validator-signed calls, deterministic expiry, and sender-only recovery. The next checkpoint must prove retry safety: another `advance_payment` cannot mutate terminal state, and another `claim_payment` cannot credit the sender twice.

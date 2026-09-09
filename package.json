@@ -94,6 +94,7 @@
     "p4:v21:preflight:expiry-recovery": "tsx scripts/p4-v21-recover-stalled-payment.ts --v21-expiry",
     "p4:v21:auth:simulate:expiry-recovery": "tsx scripts/p4-v21-recover-stalled-payment.ts --v21-expiry --approved-p4-v21-expiry-tee-auth-recovery-simulation",
     "p4:v21:send:expiry-recovery": "tsx scripts/p4-v21-recover-stalled-payment.ts --v21-expiry --approved-p4-v21-expiry-tee-auth-recovery-simulation --send --approved-p4-v21-expiry-recovery",
+    "p4:v21:auth:verify:expiry-recovery": "tsx scripts/p4-v21-verify-expiry-recovery.ts --approved-p4-v21-expiry-tee-auth-recovery-verification",
     "p4:legacy:diagnose:expired-schedule": "tsx scripts/p4-auth-simulate-expired-schedule.ts --approved-p4-tee-auth-expired-schedule-simulation",
     "p4:auth:simulate:expired-cancel": "tsx scripts/p4-auth-simulate-expired-cancel.ts --approved-p4-tee-auth-expired-cancel-simulation",
     "p4:send:expired-cancel": "tsx scripts/p4-auth-simulate-expired-cancel.ts --approved-p4-tee-auth-expired-cancel-simulation --send --approved-p4-expired-payment-cancellation",
