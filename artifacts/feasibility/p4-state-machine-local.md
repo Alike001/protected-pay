@@ -772,3 +772,36 @@ Broadcast: false
 ```
 
 This is the corrected version-2 permission topology in a real Devnet simulation: automation receives access to the individual Payment but no instruction grants access to either user's aggregate Deposit. A separate sender approval is required before the same guarded flow may sign and broadcast the delegation.
+
+## Version-2 settlement delegation broadcast
+
+After explicit approval, the guarded client repeated the unsigned checks, loaded only the approved sender signer, and passed a signature-verified simulation before submitting the same wire transaction. The transaction finalized successfully. Its first post-submit verifier incorrectly expected the temporary delegation buffers to remain queryable, so it raised an error after finalization; no retry or second transaction was sent. A corrected read-only verifier models the actual lifecycle: temporary buffers close, while delegation records and metadata persist.
+
+```text
+Unsigned finalized pre-state slot: 495665396
+Signature-verified simulation slot: 495665436
+Finalized transaction: GdCSsjhYbv4sQ4h176vMU9T9U6752m4g8kcp5n3vSBgrJcUtKV2355gqM7M9HDEmk8DozT5sbpXJxW5sqVkfcEB
+Independent finalized verification slot: 495666350
+Sender and fee payer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Payment: 83JoRQii6JKQV5hziNgrrpoYmrzTom8h25gSVWEGpjNK
+Payment permission: 3phccDv3mz1jPfHqPcF5qW83hB46M2tcAazqNDtWmvnU
+Payment owner: MagicBlock Delegation Program
+Payment permission owner: MagicBlock Delegation Program
+Payment version/amount/initialized: 2 / 0 / false
+Persistent delegation records and metadata present: true
+Temporary delegation buffers closed: true
+Sender Deposit owner: MagicBlock Delegation Program
+Recipient Deposit owner: MagicBlock Delegation Program
+Signature verification: passed
+Simulation error: null
+Compute units consumed: 102,243
+Transaction fee: 5,000 lamports
+Delegation-account rent: 4,612,640 lamports
+Fee plus rent: 4,617,640 lamports
+Authority balance: 6.71296308 SOL -> 6.70834544 SOL
+USDC moved: 0
+Payment and permission financial data changed: false
+Independent Solana CLI confirmation: Finalized
+```
+
+This completes the corrected delegation topology on Devnet. The next checkpoint requires sender authentication to the Private ER and a signed, non-broadcast simulation of `open_payment`. That simulation should debit 1 test USDC from the sender's private available balance into the individual Payment escrow without touching the recipient Deposit or transferring SPL tokens.

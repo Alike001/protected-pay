@@ -72,6 +72,7 @@ const PAYMENT_SIZE = 245;
 const PERMISSION_SIZE = 567;
 const COMPUTE_UNIT_LIMIT = 600_000;
 const SEND_REQUESTED = process.argv.includes("--send");
+const VERIFY_REQUESTED = process.argv.includes("--verify-finalized");
 const APPROVAL_FLAG = "--approved-p4-v2-settlement-delegation";
 
 type EncodedAccountData = readonly [string, string];
@@ -299,16 +300,27 @@ async function loadValidatedPreState(plan: Awaited<ReturnType<typeof derivePlan>
 function validatePostState(
   accounts: readonly ({ data: EncodedAccountData; lamports: bigint; owner: Address } | null)[],
   before: Awaited<ReturnType<typeof loadValidatedPreState>>,
+  temporaryBuffersClosed = false,
 ) {
   const [paymentPermission, payment, ...tail] = accounts;
   const createdDelegationAccounts = tail.slice(0, 6);
+  const [permissionBuffer, permissionRecord, permissionMetadata, paymentBuffer, paymentRecord, paymentMetadata] =
+    createdDelegationAccounts;
   const senderDeposit = tail[6];
   const recipientDeposit = tail[7];
   const authority = tail[8];
+  const delegationAccountsValid = temporaryBuffersClosed
+    ? permissionBuffer === null &&
+      paymentBuffer === null &&
+      permissionRecord !== null &&
+      permissionMetadata !== null &&
+      paymentRecord !== null &&
+      paymentMetadata !== null
+    : createdDelegationAccounts.every((account) => account !== null);
   if (
     !paymentPermission ||
     !payment ||
-    createdDelegationAccounts.some((account) => account === null) ||
+    !delegationAccountsValid ||
     !senderDeposit ||
     !recipientDeposit ||
     !authority
@@ -335,6 +347,99 @@ function validatePostState(
       0n,
     ),
   };
+}
+
+async function verifyFinalizedDelegation() {
+  const plan = await derivePlan();
+  const response = await rpc
+    .getMultipleAccounts(returnedAddresses(plan), {
+      commitment: "finalized",
+      encoding: "base64",
+    })
+    .send();
+  const [
+    paymentPermission,
+    paymentAccount,
+    permissionBuffer,
+    permissionRecord,
+    permissionMetadata,
+    paymentBuffer,
+    paymentRecord,
+    paymentMetadata,
+    senderDepositAccount,
+    recipientDepositAccount,
+    authorityAccount,
+  ] = response.value;
+  if (
+    !paymentPermission ||
+    paymentPermission.owner !== DELEGATION_PROGRAM_ID ||
+    accountBytes(paymentPermission.data).length !== PERMISSION_SIZE ||
+    !paymentAccount ||
+    paymentAccount.owner !== DELEGATION_PROGRAM_ID ||
+    accountBytes(paymentAccount.data).length !== PAYMENT_SIZE ||
+    permissionBuffer !== null ||
+    paymentBuffer !== null ||
+    !permissionRecord ||
+    permissionRecord.owner !== DELEGATION_PROGRAM_ID ||
+    !permissionMetadata ||
+    permissionMetadata.owner !== DELEGATION_PROGRAM_ID ||
+    !paymentRecord ||
+    paymentRecord.owner !== DELEGATION_PROGRAM_ID ||
+    !paymentMetadata ||
+    paymentMetadata.owner !== DELEGATION_PROGRAM_ID ||
+    !senderDepositAccount ||
+    senderDepositAccount.owner !== DELEGATION_PROGRAM_ID ||
+    !recipientDepositAccount ||
+    recipientDepositAccount.owner !== DELEGATION_PROGRAM_ID ||
+    !authorityAccount ||
+    authorityAccount.owner !== SYSTEM_PROGRAM
+  ) {
+    throw new Error("Finalized delegation account topology is invalid");
+  }
+  const payment = getPaymentDecoder().decode(accountBytes(paymentAccount.data));
+  const senderDeposit = getDepositDecoder().decode(accountBytes(senderDepositAccount.data));
+  const recipientDeposit = getDepositDecoder().decode(
+    accountBytes(recipientDepositAccount.data),
+  );
+  if (
+    !bytesEqual(payment.discriminator, PAYMENT_DISCRIMINATOR) ||
+    !bytesEqual(payment.paymentId, V2_SETTLEMENT_PAYMENT_ID) ||
+    payment.sender !== AUTHORITY ||
+    payment.recipient !== V2_RECIPIENT ||
+    payment.tokenMint !== USDC_MINT ||
+    payment.amount !== 0n ||
+    payment.status !== PaymentStatus.Created ||
+    payment.initialized ||
+    payment.redacted ||
+    payment.version !== 2 ||
+    !bytesEqual(senderDeposit.discriminator, DEPOSIT_DISCRIMINATOR) ||
+    senderDeposit.user !== AUTHORITY ||
+    senderDeposit.tokenMint !== USDC_MINT ||
+    !bytesEqual(recipientDeposit.discriminator, DEPOSIT_DISCRIMINATOR) ||
+    recipientDeposit.user !== V2_RECIPIENT ||
+    recipientDeposit.tokenMint !== USDC_MINT
+  ) {
+    throw new Error("Finalized delegation state failed relationship validation");
+  }
+  console.log(
+    json({
+      finalizedDelegationVerification: {
+        finalizedReadSlot: response.context.slot,
+        payment: plan.payment,
+        paymentPermission: plan.paymentPermission,
+        paymentOwner: paymentAccount.owner,
+        paymentPermissionOwner: paymentPermission.owner,
+        paymentVersion: payment.version,
+        paymentAmount: payment.amount,
+        paymentInitialized: payment.initialized,
+        delegationRecordsAndMetadataPresent: true,
+        temporaryDelegationBuffersClosed: true,
+        senderDepositOwner: senderDepositAccount.owner,
+        recipientDepositOwner: recipientDepositAccount.owner,
+        authorityLamports: authorityAccount.lamports,
+      },
+    }),
+  );
 }
 
 async function buildUnsignedWire(plan: Awaited<ReturnType<typeof derivePlan>>) {
@@ -510,7 +615,7 @@ async function sendApprovedDelegation() {
       encoding: "base64",
     })
     .send();
-  validatePostState(finalized.value, before);
+  validatePostState(finalized.value, before, true);
   console.log(
     json({
       finalizedTransaction: {
@@ -532,7 +637,12 @@ async function sendApprovedDelegation() {
   );
 }
 
-if (!SEND_REQUESTED) {
+if (VERIFY_REQUESTED) {
+  if (SEND_REQUESTED) {
+    throw new Error("--verify-finalized cannot be combined with --send");
+  }
+  await verifyFinalizedDelegation();
+} else if (!SEND_REQUESTED) {
   await simulateDelegation();
 } else {
   if (!process.argv.includes(APPROVAL_FLAG)) {
