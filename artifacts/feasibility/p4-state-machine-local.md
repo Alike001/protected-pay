@@ -283,3 +283,32 @@ Recipient signature required: false
 ```
 
 The finalized read validated each delegated account's owner and allocation, all six persistent delegation record/metadata accounts, the absence of temporary buffers, the Payment and Deposit discriminators and relationships, the unchanged vault token account, and the unchanged financial state.
+
+## Recipient one-signature onboarding preflight
+
+The recipient can accept the prepared payment link without the sender returning online. An unsigned transaction created the recipient Deposit permission, delegated it, and delegated the recipient's zero-balance Deposit in one atomic operation. The client validated that the invitation names this recipient, the Payment and its permission are already delegated, the recipient Deposit is genuine and empty, the recipient permission and all proposed delegation PDAs are absent, and the required MagicBlock programs and validator are available.
+
+```text
+Finalized pre-state slot: 495555908
+Simulation slot: 495555944
+Recipient: HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr
+Recipient Deposit: DJU7iPmejpGXAxAs3apWA7ZmWob33cnc3ebAZ7YQ5nxK
+Transaction size: 750 bytes
+Instructions: create recipient Deposit permission, delegate permission, delegate Deposit
+Recipient signature required: yes
+Sender signature required: no
+Simulation error: null
+Compute units consumed: 130,292
+Estimated fee: 5,000 lamports
+New account rent: 8,326,120 lamports
+Total estimated fee plus rent: 8,331,120 lamports
+USDC moved: 0
+SOL transferred: 0
+Recipient available/locked: 0/0 -> 0/0
+Recipient permission owner after simulation: MagicBlock Delegation Program
+Recipient Deposit owner after simulation: MagicBlock Delegation Program
+Signed: false
+Broadcast: false
+```
+
+The current proof uses one recipient signature and charges Devnet fee/rent to the recipient wallet. The production UX target is still one signature, but with a sponsor or relayer paying transaction costs. Gas sponsorship has not yet been implemented and is not claimed by this proof.
