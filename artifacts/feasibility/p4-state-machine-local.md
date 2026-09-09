@@ -230,3 +230,34 @@ Recipient Deposit permission created: false
 ```
 
 The independent CLI confirmation finalized and the Payment transaction history returned the same signature. The live client revalidated all token, Vault, Deposit, Payment, permission-owner, and relationship fields after finalization.
+
+## Sender-side delegation preflight
+
+The next unsigned client validated the finalized `60/300` Config, the amount-free Payment shell, its MagicBlock permission, the funded sender Deposit, the already-delegated sender Deposit permission, the required programs and validator, and the absence of all nine new delegation PDAs. It then simulated delegating the three sender-controlled accounts together. The recipient was not a signer.
+
+```text
+Finalized pre-state slot: 495551184
+Simulation slot: 495551221
+Payment: DX7ndZZSka9KzDfhzjaA4ww3T4pmXFRHUyAoZFUScidY
+Payment permission: BiqbCtkzMsnNA2qVrcToSeeUTCevxzGgUsR5Zkn5qbvv
+Sender Deposit: 5gUmsQ4sxHvWrKTvbt8Vn4mDzVNH3xAaC11Tarj7uehB
+Private validator: MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo
+Transaction size: 915 bytes
+Instructions: delegate Payment permission, delegate Payment, delegate sender Deposit
+Sender signature required: yes
+Recipient signature required: no
+Simulation error: null
+Compute units consumed: 159,751
+Estimated fee: 5,000 lamports
+Delegation-account rent: 7,091,680 lamports
+Total estimated fee plus rent: 7,096,680 lamports
+USDC moved: 0
+SOL transferred: 0
+Sender available/locked: 3.000000/0 -> 3.000000/0
+Payment amount/initialized: 0/false -> 0/false
+All three account owners after simulation: MagicBlock Delegation Program
+Signed: false
+Broadcast: false
+```
+
+The simulation compared the full Payment, Deposit, permission, and vault-token bytes before and after delegation. Their data was unchanged; only account ownership and delegation infrastructure changed. Public Solana still reveals the prepared shell relationships and delegation metadata. The payment amount, memo, and later balance transitions can become private only when they are supplied and executed inside the Private ER.
