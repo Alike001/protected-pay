@@ -1,6 +1,6 @@
 # Plan: Protected Pay Risk-First Hackathon Build
 
-Status: active implementation plan. G0–G3 passed with narrowed privacy language. Phase 4's real private open and sender recovery paths pass, and the version-2 permission-topology correction is deployed on Devnet. The real version-2 Payment Crank proof remains before product UI work.
+Status: active implementation plan. G0–G3 passed with narrowed privacy language. Phase 4's real private open and sender recovery paths pass, and the version-2 permission-topology correction is deployed on Devnet. The first atomic Payment schedule exposed an off-by-one cadence defect: MagicBlock executes the first iteration immediately, so six 60-second iterations are required to reach the 300-second expiry boundary. The real version-2 Payment Crank proof remains before product UI work.
 
 ## Inputs
 
@@ -31,6 +31,7 @@ No separate user-story document exists. The PRD's user journeys and acceptance c
 - A fresh version-2 settlement Payment and permission are delegated on Devnet. Both temporary buffers closed, persistent records/metadata exist, and both user Deposits remain separately delegated and absent from the transaction.
 - The sender-authenticated version-2 private-open simulation passes: 1 test USDC moves from sender available balance into individual Payment escrow, Deposit `locked` stays zero, the recipient Deposit is absent, protected arguments are absent from logs, and no state persists.
 - The atomic version-2 `open_payment` + `schedule_payment` signed simulation passes. The scheduled `advance_payment` target contains only the shared Payment, needs no signer or financial arguments, and both instructions roll back together in simulation.
+- The approved atomic broadcast finalized on the Private ER and opened 1 test USDC of per-Payment escrow. MagicBlock then finalized all five configured executions at `createdAt + 0, +60, +120, +180, +240`. Because expiry is `createdAt + 300`, all five were valid no-ops and the task ended with Payment still `Created`. The late recipient preflight authenticated successfully but correctly signed and broadcast no acknowledgement.
 - Node `24.14.1`, Yarn `1.22.22`, Rust/Cargo `1.96.0`, Solana CLI `4.0.1`, Anchor CLI `1.0.2`, and AVM `1.0.1` are installed.
 - The pinned MagicBlock private-payments starter uses Node 24, Anchor `0.31.1`, `ephemeral-rollups-sdk` `0.2.11`, `@solana/web3.js` `1.98.x`, and Next.js `15.3.x`. It remains prior art for the token/private-account lifecycle, not the build baseline: the current official Crank example requires Anchor `1.0.2` and SDK revision `0fc4604157de51df28693e02e5a1a6a4a08c8a03` with `crank`, so Protected Pay pins that newer stack.
 - The installed Anchor CLI does not match the starter's Anchor version. The build must use AVM to pin the compatible CLI or deliberately upgrade only after the unchanged baseline is reproduced.
@@ -97,7 +98,7 @@ The first three technical risks from the accepted specification map directly to 
 | G2 Crank | PASS | Official MagicBlock scheduling produced three autonomous private executions; one transition plus two no-ops; terminal state committed to Solana | Replace the probe with the real Payment state machine |
 | G3 privacy | NARROW PASS | Outsider denial and exact public/private metadata boundary measured | Independently verify TEE attestation; re-audit the future Payment layout |
 | Decision | NARROW / PROCEED | The architecture is viable with precise privacy language | Do not claim anonymity or permanent secrecy |
-| Phase 4 | V1 LIVE RECOVERY PASS / V2 ATOMIC SIM PASS | V2 fixture is delegated; authenticated atomic open + Payment-only schedule proves per-Payment escrow and automation topology | Broadcast the atomic transaction, then acknowledge, settle, claim, and test retries |
+| Phase 4 | V1 LIVE RECOVERY PASS / V2 ATOMIC LIVE, CADENCE FIX REQUIRED | Atomic private escrow and Payment-only scheduling finalized; five autonomous calls proved the first iteration is immediate | Change the schedule to six iterations, upgrade, then prove acknowledge/settle/claim and expire/recover paths |
 | Phase 5 | WAITING | — | Build the 30-second product UI only after Phase 4 live tests pass |
 | Phase 6 | WAITING | — | End-to-end evidence, video, deployment, and submission |
 
@@ -105,12 +106,13 @@ The first three technical risks from the accepted specification map directly to 
 
 1. **Complete locally:** keep aggregate user Deposits private to their owners and use the shared Payment as per-payment escrow; Crank now targets only Payment.
 2. **Complete for the core lifecycle:** version-2 tests cover claims, cancel-versus-Crank, expiry boundaries, duplicate execution, overflow atomicity, legacy-version rejection, and conservation. Pause/revocation stays deferred with session-key automation.
-3. **Next:** after explicit approval, authenticate again and broadcast a fresh atomic version-2 open + Payment-only Crank schedule transaction.
-4. Prove the real Crank lifecycle twice: acknowledged payment to settlement and abandoned payment to automatic expiry/refund, with both users offline and retries idempotent.
-5. Repeat the privacy audit and commit/undelegate proof for the corrected Payment layout. Preserve the narrow claim: pending amount, memo hash, status, and balances are private; wallet relationships and delegation metadata are not anonymous.
-6. Measure the funded-user approval count and package the normal flow as simply as the infrastructure permits.
-7. Build the product UI: fund, send, share, acknowledge, countdown, Undo, activity, withdrawal, recovery, plus a separate judge-proof view.
-8. Run all three end-to-end stories from fresh state, perform the final verification audit, deploy the web client, record the product-first video, confirm the authenticated submission deadline, and submit.
+3. **Next:** change the fixed Payment schedule from five to six 60-second iterations, add a regression assertion for the observed immediate-first-run cadence, rebuild, and upgrade only after explicit approval.
+4. Recover the current safe-but-`Created` escrow through an explicitly approved manual `advance_payment` followed by the sender-only claim path.
+5. Prove the corrected real Crank lifecycle twice on fresh fixtures: acknowledged payment to settlement and abandoned payment to automatic expiry/refund, with both users offline and retries idempotent.
+6. Repeat the privacy audit and commit/undelegate proof for the corrected Payment layout. Preserve the narrow claim: pending amount, memo hash, status, and balances are private; wallet relationships and delegation metadata are not anonymous.
+7. Measure the funded-user approval count and package the normal flow as simply as the infrastructure permits.
+8. Build the product UI: fund, send, share, acknowledge, countdown, Undo, activity, withdrawal, recovery, plus a separate judge-proof view.
+9. Run all three end-to-end stories from fresh state, perform the final verification audit, deploy the web client, record the product-first video, confirm the authenticated submission deadline, and submit.
 
 AI assistance, fiat/card integrations, multi-token support, and Resolva integration remain deferred. Circle Devnet test USDC stays the only MVP asset unless the organizer requires another mint.
 

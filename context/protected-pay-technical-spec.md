@@ -348,11 +348,12 @@ Important rules:
 
 ## Scheduled Execution
 
-The preferred hackathon schedule is one idempotent task per payment that invokes `advance_payment` every 60 seconds for five iterations:
+The preferred hackathon schedule is one idempotent task per payment that invokes `advance_payment` every 60 seconds for six iterations. Live Private ER evidence showed that the first invocation occurs immediately rather than after one interval:
 
-- iteration 1 can mark an acknowledged payment settled after the safety window;
-- iterations 2–4 safely retry or no-op;
-- iteration 5 marks an unacknowledged payment expired at the claim deadline;
+- iteration 1 runs immediately and is normally a safe no-op;
+- iteration 2 can mark an acknowledged payment settled at the 60-second safety boundary;
+- iterations 3–5 safely retry or no-op;
+- iteration 6 marks an unacknowledged payment expired at the 300-second claim deadline;
 - all iterations after a terminal state return without moving funds.
 
 If the current Crank interface supports reliable one-shot tasks at absolute deadlines, two one-shot calls may replace the recurring schedule. Either implementation must satisfy the same state-based acceptance criteria.

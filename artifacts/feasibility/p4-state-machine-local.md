@@ -4,7 +4,7 @@ Date: 2026-09-09
 
 ## Result
 
-**V1 LIVE RECOVERY PASS / V2 LOCAL PERMISSION-TOPOLOGY PASS / V2 DEPLOYMENT PENDING**
+**V1 LIVE RECOVERY PASS / V2 ATOMIC LIVE / V2 CRANK CADENCE FIX REQUIRED**
 
 The Anchor program now implements the complete protected-payment lifecycle:
 
@@ -14,7 +14,7 @@ The Anchor program now implements the complete protected-payment lifecycle:
 - recipient-only acknowledgement;
 - sender-only cancellation and recovery;
 - permissionless deterministic settlement or expiry;
-- a fixed five-iteration, 60-second MagicBlock Crank schedule;
+- a fixed 60-second MagicBlock Crank schedule, currently five iterations and proven to require six;
 - owner-only settlement/expiry claims followed by atomic terminal redaction;
 - authority-controlled timing updates that affect only future payments.
 
@@ -894,3 +894,59 @@ Broadcast: false
 ```
 
 This closes the version-1 timing gap: a broadcast can no longer start the five-minute window without also registering its automation. A separate approval is still required for a fresh authentication, signature, and atomic broadcast; the simulation signature is intentionally unbroadcast and will expire.
+
+## Version-2 atomic broadcast and live Crank cadence finding
+
+After explicit approval, the guarded sender client repeated the public/private ownership checks, unauthenticated-read denial, TEE authentication, and signature-verified simulation. It then submitted the same atomic `open_payment` plus `schedule_payment` transaction to the Private ER. Both instructions finalized together.
+
+```text
+Public finalized pre-state slot: 495677697
+Authenticated Private ER pre-state slot: 300643207
+Signed simulation slot: 300643220
+Finalized Private ER slot: 300643256
+Atomic transaction: 296f9Y8Cir938Gk8spqmyMtm2ai6vXKFtuWVs5wANHaU5LYsUV6gCdycyLLuxampLaLKecJAGbMBWT9dUjtyvKba
+Task ID: 1788965539251
+Created at: 1788965541
+Settle after: 1788965601
+Expires at: 1788965841
+Execution interval / iterations: 60,000 ms / 5
+Payment status after open: Created
+Private Payment escrow: 1.000000 test USDC
+Private sender available: 2.000000 test USDC
+Private sender locked: 0
+Private sender payment nonce: 3
+Scheduled target: signer-free advance_payment
+Scheduled target accounts: Payment only
+SPL token movement: none
+Unauthenticated protected reads: all null
+```
+
+The Payment-only topology worked, but the live task disproved the assumed timing model. The program history contained the user transaction plus five distinct successful autonomous executions:
+
+```text
+offset   block time    slot        Crank signature
++0s      1788965541   300643256   2sbwgu4fRU7GCVTkR88F3N8zLe5wVqZ2WyMGo9vmnHnx8bvEF9QbWVVz3wefmCFUmGMVtW1xUsuLqxLaRCYug6yp
++60s     1788965601   300644456   2ukUtZy9QBjcKNPeMoMhT6cGfggr8zdbotAyf3VxbXX449rF7TybJn1qBFE81JUwv2sfMFr3ek51W44mjTw3i3qS
++120s    1788965661   300645656   YAFk4EK1cJEJj2kziVBLph7VLmRiYJWo6eLt5Xkh8za9KijTbRJBio5c2ggT3CW18Z9mLKDgySNxfzhtSqq61j1
++180s    1788965721   300646856   5FV9ZjLkkGX8jNsKtFYU1cG9Nbv6LzEQpJswwM3Zk2ZW4hukwnEVM5NTiPdhJ2HC6pA8gf3gi2JE2dj8bRkx6fWB
++240s    1788965781   300648056   3Tt45mCGKzfsym7SPqDjNJYBH9qJCPQHRvfvjZMfo2jvqibWJ4sE5w1UpFgcUxr3msiEHkrbVW7YMMzUQarKyuZx
+```
+
+All five entries finalized with `err: null`. There was no sixth Protected Pay execution at the `+300s` expiry boundary or during the following minute. Every configured call was therefore an expected no-op against an unacknowledged `Created` payment, and the task ended before it could mark the Payment `Expired`.
+
+The recipient then authenticated successfully, but the guarded acknowledgement client observed the payment after its immutable expiry deadline. It stopped before constructing or signing the acknowledgement transaction:
+
+```text
+Recipient: HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr
+Payment status observed: Created
+First observed lateness: 31 seconds after expiry
+Follow-up observed lateness: 152 seconds after expiry
+Recipient could read shared Payment: true
+Recipient could read own Deposit: true
+Recipient could read sender Deposit: false
+Recipient Deposit changed: false
+Acknowledgement signed: false
+Acknowledgement broadcast: false
+```
+
+The failure is a schedule-cadence defect, not a custody or privacy failure: the 1 test USDC remains in the private per-Payment escrow, neither party's aggregate Deposit was exposed, and no late recipient action was authorized. The correction is six 60-second iterations (immediate, then `+60` through `+300`) or an absolute-deadline task. The current escrow requires an explicitly approved manual `advance_payment` before the sender-only expired claim can recover it.
