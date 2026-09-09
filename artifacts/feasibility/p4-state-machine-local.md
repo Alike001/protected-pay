@@ -805,3 +805,44 @@ Independent Solana CLI confirmation: Finalized
 ```
 
 This completes the corrected delegation topology on Devnet. The next checkpoint requires sender authentication to the Private ER and a signed, non-broadcast simulation of `open_payment`. That simulation should debit 1 test USDC from the sender's private available balance into the individual Payment escrow without touching the recipient Deposit or transferring SPL tokens.
+
+## Version-2 authenticated private-open simulation
+
+After explicit approval, the version-aware client first validated the public Config, vault collateral, delegated Payment and permission, and both delegated user Deposits and permissions. Unauthenticated Private ER reads returned `null`. The first network attempt timed out at the Private ER edge before producing simulation evidence and changed no state. Once endpoint reachability recovered, the client authenticated the exact sender through the Query Filtering Service, kept the bearer token only in memory, and performed a signature-verified simulation without broadcast.
+
+```text
+Public finalized pre-state slot: 495669332
+Authenticated Private ER pre-state slot: 300615443
+Signed simulation slot: 300615462
+Private ER: https://devnet-tee.magicblock.app
+Authenticated identity: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Payment: 83JoRQii6JKQV5hziNgrrpoYmrzTom8h25gSVWEGpjNK
+Recipient: HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr
+Instruction: open_payment
+Payment version: 2
+Private amount: 1.000000 test USDC
+Escrow model: individual Payment liability
+Transaction size: 391 bytes
+Prepared, unbroadcast signature: 8NoDwmRfRuPoEJ1u5kgmQhgFjDitSNiYFZfnZtqppx7rnuovxZ4fTQtL2nrQZMHHQrAbxrnaQgPYsfLyTsRJ9cQ
+Signature verification: passed
+Simulation error: null
+Compute units consumed: 12,836
+Private sender available: 3.000000 -> 2.000000 test USDC
+Private sender locked: 0 -> 0 test USDC
+Private sender payment nonce: 2 -> 3
+Payment amount/initialized: 0/false -> 1.000000/true
+Settlement delay: 60 seconds
+Expiry delay: 300 seconds
+Recipient Deposit included: false
+SPL token movement: none
+Protected amount or memo hash in program logs: false
+Unauthenticated protected reads: all null
+Private state persisted after simulation: false
+Public state changed after simulation: false
+Bearer token printed or persisted: false
+Hardware attestation independently verified: false
+Signed: true
+Broadcast: false
+```
+
+This is the first live proof of the corrected accounting transition. Unlike version 1, opening does not place the liability in the sender's aggregate `locked` field. The value leaves `available` and exists only in the individual shared Payment, so the future Crank can decide its outcome without receiving access to either user's aggregate Deposit. A separate approval is required before a fresh signed private-open transaction may be broadcast.

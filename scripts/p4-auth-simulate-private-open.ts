@@ -50,29 +50,51 @@ import {
   TOKEN_PROGRAM_ID,
 } from "./gate1-simulate-delegation.ts";
 import { authenticatePrivateEr, PRIVATE_ER_ORIGIN } from "./private-er-auth.ts";
+import {
+  V2_RECIPIENT,
+  V2_SETTLEMENT_PAYMENT_ID,
+  V2_SETTLEMENT_PAYMENT_LABEL,
+} from "./p4-v2-settlement-bootstrap.ts";
 
-const BASE_RPC_URL = "https://api.devnet.solana.com" as const;
-const APPROVAL_FLAG = "--approved-p4-tee-auth-private-open-simulation";
+const DEFAULT_BASE_RPC_URL = "https://api.devnet.solana.com" as const;
+const BASE_RPC_URL = (process.env.SOLANA_RPC_URL ??
+  DEFAULT_BASE_RPC_URL) as typeof DEFAULT_BASE_RPC_URL;
+const V2_MODE = process.argv.includes("--v2-settlement");
+const APPROVAL_FLAG = V2_MODE
+  ? "--approved-p4-v2-tee-auth-private-open-simulation"
+  : "--approved-p4-tee-auth-private-open-simulation";
 const SEND_REQUESTED = process.argv.includes("--send");
-const SEND_APPROVAL_FLAG = "--approved-p4-private-payment-open";
+const SEND_APPROVAL_FLAG = V2_MODE
+  ? "--approved-p4-v2-private-payment-open"
+  : "--approved-p4-private-payment-open";
 const MAX_CONFIRMATION_POLLS = 120;
-const RECIPIENT =
-  "HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr" as Address;
-const PAYMENT_ID = new Uint8Array(
-  createHash("sha256")
-    .update("protected-pay:phase4:correct-payment:v1")
-    .digest(),
-);
+const RECIPIENT = V2_MODE
+  ? V2_RECIPIENT
+  : ("HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr" as Address);
+const PAYMENT_LABEL = V2_MODE
+  ? V2_SETTLEMENT_PAYMENT_LABEL
+  : "protected-pay:phase4:correct-payment:v1";
+const PAYMENT_ID = V2_MODE
+  ? V2_SETTLEMENT_PAYMENT_ID
+  : new Uint8Array(createHash("sha256").update(PAYMENT_LABEL).digest());
 // This is a non-sensitive fixture preimage. The proof tests ledger privacy,
 // not secrecy of source-controlled test data.
 const MEMO_HASH = new Uint8Array(
   createHash("sha256")
-    .update("invoice:prototype-001:consulting-services")
+    .update(
+      V2_MODE
+        ? "invoice:prototype-v2-settlement-001:consulting-services"
+        : "invoice:prototype-001:consulting-services",
+    )
     .digest(),
 );
 const ZERO_32 = new Uint8Array(32);
 const PAYMENT_AMOUNT = 1_000_000n;
 const TOTAL_VAULT_AMOUNT = 3_000_000n;
+const EXPECTED_PAYMENT_VERSION = V2_MODE ? 2 : 1;
+const PRIVATE_PRE_OPEN_NONCE = V2_MODE ? 2n : 1n;
+const PRIVATE_POST_OPEN_NONCE = PRIVATE_PRE_OPEN_NONCE + 1n;
+const PRIVATE_POST_OPEN_LOCKED = V2_MODE ? 0n : PAYMENT_AMOUNT;
 const CONFIG_SIZE = 154;
 const PAYMENT_SIZE = 245;
 const DEPOSIT_SIZE = 98;
@@ -269,6 +291,7 @@ if (
   publicPayment.status !== PaymentStatus.Created ||
   publicPayment.initialized ||
   publicPayment.redacted ||
+  publicPayment.version !== EXPECTED_PAYMENT_VERSION ||
   publicSenderDeposit.user !== AUTHORITY ||
   publicSenderDeposit.tokenMint !== USDC_MINT ||
   publicSenderDeposit.available !== TOTAL_VAULT_AMOUNT ||
@@ -358,11 +381,12 @@ if (
   privatePayment.status !== PaymentStatus.Created ||
   privatePayment.initialized ||
   privatePayment.redacted ||
+  privatePayment.version !== EXPECTED_PAYMENT_VERSION ||
   privateSenderDeposit.user !== AUTHORITY ||
   privateSenderDeposit.tokenMint !== USDC_MINT ||
   privateSenderDeposit.available !== TOTAL_VAULT_AMOUNT ||
   privateSenderDeposit.locked !== 0n ||
-  privateSenderDeposit.nextPaymentNonce !== 1n ||
+  privateSenderDeposit.nextPaymentNonce !== PRIVATE_PRE_OPEN_NONCE ||
   privateSenderDeposit.automationPaused
 ) {
   throw new Error("Unexpected authenticated pre-open Payment or Deposit state");
@@ -463,12 +487,12 @@ if (
   !bytesEqual(simulatedPayment.terminalCommitment, ZERO_32) ||
   !simulatedPayment.initialized ||
   simulatedPayment.redacted ||
-  simulatedPayment.version !== 1 ||
+  simulatedPayment.version !== EXPECTED_PAYMENT_VERSION ||
   simulatedSenderDeposit.user !== AUTHORITY ||
   simulatedSenderDeposit.tokenMint !== USDC_MINT ||
   simulatedSenderDeposit.available !== 2_000_000n ||
-  simulatedSenderDeposit.locked !== PAYMENT_AMOUNT ||
-  simulatedSenderDeposit.nextPaymentNonce !== 2n ||
+  simulatedSenderDeposit.locked !== PRIVATE_POST_OPEN_LOCKED ||
+  simulatedSenderDeposit.nextPaymentNonce !== PRIVATE_POST_OPEN_NONCE ||
   simulatedSenderDeposit.automationPaused ||
   simulatedSenderDeposit.version !== 1
 ) {
@@ -587,7 +611,12 @@ console.log(
       signer: AUTHORITY,
       instruction: "open_payment",
       token: "Circle Devnet test USDC",
-      amount: "1.000000 USDC internal accounting lock",
+      amount: V2_MODE
+        ? "1.000000 USDC individual Payment escrow"
+        : "1.000000 USDC internal accounting lock",
+      paymentLabel: PAYMENT_LABEL,
+      paymentVersion: EXPECTED_PAYMENT_VERSION,
+      escrowModel: V2_MODE ? "per-Payment liability" : "aggregate Deposit locked field",
       recipient: RECIPIENT,
       safetyWindowSeconds: 60,
       claimWindowSeconds: 300,
@@ -719,7 +748,7 @@ if (SEND_REQUESTED) {
         decodedPayment.initialized &&
         decodedPayment.amount === PAYMENT_AMOUNT &&
         decodedDeposit.available === 2_000_000n &&
-        decodedDeposit.locked === PAYMENT_AMOUNT
+        decodedDeposit.locked === PRIVATE_POST_OPEN_LOCKED
       ) {
         confirmedPayment = decodedPayment;
         confirmedDeposit = decodedDeposit;
@@ -744,10 +773,10 @@ if (SEND_REQUESTED) {
     !bytesEqual(confirmedPayment.memoHash, MEMO_HASH) ||
     !bytesEqual(confirmedPayment.terminalCommitment, ZERO_32) ||
     confirmedPayment.redacted ||
-    confirmedPayment.version !== 1 ||
+    confirmedPayment.version !== EXPECTED_PAYMENT_VERSION ||
     confirmedDeposit.user !== AUTHORITY ||
     confirmedDeposit.tokenMint !== USDC_MINT ||
-    confirmedDeposit.nextPaymentNonce !== 2n ||
+    confirmedDeposit.nextPaymentNonce !== PRIVATE_POST_OPEN_NONCE ||
     confirmedDeposit.automationPaused ||
     confirmedDeposit.version !== 1
   ) {
