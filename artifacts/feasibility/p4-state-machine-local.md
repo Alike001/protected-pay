@@ -1091,3 +1091,35 @@ Prepared signature found on Devnet: false
 ```
 
 The simulation proves the exact version-2.1 loader transition, reviewed bytecode replacement, unused-capacity cleanup, buffer closure, and rent accounting. Simulation persisted none of those changes. A separate explicit approval is still required to sign and broadcast a fresh transaction with a fresh blockhash; the prepared simulation signature is intentionally unbroadcast and will expire.
+
+## Version-2.1 Devnet program upgrade
+
+After separate explicit broadcast approval, the guarded client repeated every finalized loader, authority, capacity, and bytecode check. It signed a fresh upgrade transaction, successfully simulated those exact wire bytes with signature verification enabled, and submitted the same bytes to Solana Devnet. The transaction finalized, installed the reviewed version-2.1 bytecode, preserved the upgrade authority, closed the Buffer, and refunded its rent.
+
+```text
+Cluster: Solana Devnet
+Release: version-2.1
+Finalized signature: 3DEwp2XzMGeuKvZPqVh1iUiJARq2Rd2SiZKFTo7teS4pzfvCRYgyHRZXZVM9ar4fEqGHWh7ps4h8EnbuaGxPocNn
+Finalized transaction slot: 495731340
+Instruction: UpgradeableLoaderInstruction::Upgrade
+Program: w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk
+ProgramData: BXX67CiW14MVLku97gfUm4muQKwUc7uDsSrbC9qsYRAj
+Preserved upgrade authority: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Closed buffer: 8qK2AAvUN6hmwFdMq6B3uDrqPZmk2b4RtucanEHpW48Q
+Deploy slot before: 495652516
+Deploy slot after: 495731340
+ProgramData capacity: 635,136 bytes
+Deployed bytecode length: 633,568 bytes
+Deployed bytecode SHA-256: e7998fcd2c85f5accead0ba7e6317dfb6bfebed210ea1d18a0b622047d4f78f1
+Trailing allocation zeroed: true
+Buffer closed: true
+Buffer rent refunded: 3.21936364 SOL
+ProgramData rent top-up: 0 SOL
+Transaction fee: 0.000005 SOL
+Authority balance before: 3.4847668 SOL
+Authority balance after: 6.70412544 SOL
+Exact signed simulation before broadcast: passed
+Simulation compute units: 2,370
+```
+
+An independent CLI confirmation returned `finalized`. A separate program read returned loader-v3 ownership, the expected ProgramData address, preserved authority, deployment slot `495731340`, and the unchanged 635,136-byte allocation. An independent balance read returned exactly `6.70412544 SOL`, while a direct Buffer lookup returned `AccountNotFound`. No token accounts or private Payment state were involved in this loader transaction.
