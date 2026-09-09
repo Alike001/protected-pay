@@ -1821,3 +1821,45 @@ Transaction broadcast: false
 ```
 
 The next checkpoint requires separate approval to authenticate the sender, validate the live `Expired` Payment and sender-only balance, and run a signature-verified claim simulation. That simulation must restore sender available accounting `1 -> 2` test USDC, clear the escrow, redact all sensitive fields behind the independently reproduced terminal commitment, and persist nothing.
+
+## Version-2.1 autonomous-expiry recovery simulation
+
+After explicit approval, the recovery runner authenticated the sender and validated the exact live `Expired` Payment, 1 test-USDC per-Payment escrow, sender's 1 test-USDC available balance and nonce 5, owner-only permission boundary, public delegated snapshots, vault collateral, and outsider denial. It then built a single-instruction sender claim; no redundant `advance_payment` and no recipient account were present.
+
+The 286-byte sender-signed transaction passed signature-verified Private ER simulation. The result restored 1 test USDC to the sender's available accounting, cleared the escrow and sensitive fields, and preserved `Expired` behind the independently reproduced terminal commitment. Program logs contained neither the amount nor memo hash. Fresh private, public, vault, and unauthenticated reads proved that the simulation persisted nothing.
+
+```text
+Private ER: https://devnet-tee.magicblock.app
+Sender / claimant / fee payer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Payment: AvZwmKkHPvrTHk3qyYCeuTAg2jSSrYM9tLEm4gKUD759
+Sender Deposit: 5gUmsQ4sxHvWrKTvbt8Vn4mDzVNH3xAaC11Tarj7uehB
+Task ID: 1788988515930
+Observed at: 1788989725
+Expired by: 906 seconds
+Status before / simulated after: Expired / Expired
+Private escrow before: 1.000000 test USDC
+Instruction: claim_payment
+Transaction size: 286 bytes
+Prepared, unbroadcast signature: 3ebMQvC1SGYdqgvfWbMgB333SfBmxrfiNZe9v4MHctDTPm4NJRiBvyFxgQu5H3xpG7GSU3Hw5xSoLhzXSqCE4Xvi
+Signed simulation slot: 301126907
+Simulation error: none
+Compute units consumed: 10,193
+Sender available: 1.000000 -> 2.000000 test USDC
+Sender locked: 0
+Payment escrow after: 0
+Payment redacted after: true
+Terminal commitment matches: true
+Recipient signature required: false
+Recipient Deposit included: false
+SPL token movement: none; private accounting only
+Protected data found in logs: false
+Private state persisted after simulation: false
+Public state changed after simulation: false
+Vault balance changed after simulation: false
+Unauthenticated protected reads: all null
+Bearer token printed or persisted: false
+Hardware attestation independently verified: false
+Transaction broadcast: false
+```
+
+The live Payment remains `Expired` with 1 test USDC in escrow and the sender at 1 test USDC available. A separate explicit approval must authorize fresh TEE authentication, a fresh signature-verified simulation, and broadcast of the sender-only claim.
