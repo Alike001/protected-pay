@@ -60,13 +60,12 @@ const APPROVAL_FLAG =
     : V21_MODE
     ? "--approved-p4-v21-recipient-tee-acknowledgement-simulation"
     : "--approved-p4-v2-recipient-tee-acknowledgement-simulation";
-const SEND_APPROVAL_FLAG = V21_MODE
-  ? "--approved-p4-v21-recipient-acknowledgement"
-  : "--approved-p4-v2-recipient-acknowledgement";
+const SEND_APPROVAL_FLAG = CLAIM_MODE
+  ? "--approved-p4-v21-recipient-claim"
+  : V21_MODE
+    ? "--approved-p4-v21-recipient-acknowledgement"
+    : "--approved-p4-v2-recipient-acknowledgement";
 const SEND_REQUESTED = process.argv.includes("--send");
-if (CLAIM_MODE && SEND_REQUESTED) {
-  throw new Error("Recipient claim broadcast is not enabled in this simulation checkpoint");
-}
 const PAYMENT_ID = V21_MODE
   ? V21_SETTLEMENT_PAYMENT_ID
   : V2_SETTLEMENT_PAYMENT_ID;
@@ -160,7 +159,7 @@ if (!process.argv.includes(APPROVAL_FLAG)) {
   throw new Error(`Refusing to authenticate or sign without ${APPROVAL_FLAG}`);
 }
 if (SEND_REQUESTED && !process.argv.includes(SEND_APPROVAL_FLAG)) {
-  throw new Error(`Refusing to send acknowledgement without ${SEND_APPROVAL_FLAG}`);
+  throw new Error(`Refusing to send the recipient transaction without ${SEND_APPROVAL_FLAG}`);
 }
 const keypairPath = process.env.SOLANA_KEYPAIR_PATH;
 if (!keypairPath) {
@@ -586,6 +585,186 @@ if (CLAIM_MODE) {
       },
     }),
   );
+
+  if (SEND_REQUESTED) {
+    const submittedSignature = await privateRpc
+      .sendTransaction(wire, {
+        encoding: "base64",
+        maxRetries: 5n,
+        preflightCommitment: "confirmed",
+        skipPreflight: false,
+      })
+      .send();
+    if (submittedSignature !== preparedSignature) {
+      throw new Error("Private ER returned a different recipient-claim signature");
+    }
+
+    let confirmation:
+      | {
+          slot: bigint;
+          confirmationStatus?: "processed" | "confirmed" | "finalized";
+          err: unknown;
+        }
+      | undefined;
+    for (let poll = 0; poll < 120; poll += 1) {
+      const response = await privateRpc
+        .getSignatureStatuses([preparedSignature], {
+          searchTransactionHistory: true,
+        })
+        .send();
+      const status = response.value[0];
+      if (status?.err) {
+        throw new Error(`Recipient claim failed: ${json(status.err)}`);
+      }
+      if (
+        status?.confirmationStatus === "confirmed" ||
+        status?.confirmationStatus === "finalized"
+      ) {
+        confirmation = {
+          slot: status.slot,
+          confirmationStatus: status.confirmationStatus,
+          err: status.err,
+        };
+        break;
+      }
+      const blockHeight = await privateRpc
+        .getBlockHeight({ commitment: "confirmed" })
+        .send();
+      if (blockHeight > latestBlockhash.lastValidBlockHeight) {
+        throw new Error("Recipient-claim transaction expired before confirmation");
+      }
+      await wait(500);
+    }
+    if (!confirmation) {
+      throw new Error("Recipient-claim confirmation timed out");
+    }
+
+    const confirmedPrivate = await privateRpc
+      .getMultipleAccounts(
+        [addresses.payment, addresses.recipientDeposit, addresses.deposit],
+        { commitment: "confirmed", encoding: "base64" },
+      )
+      .send();
+    const [confirmedPaymentAccount, confirmedRecipientAccount, senderForRecipient] =
+      confirmedPrivate.value;
+    if (
+      !confirmedPaymentAccount ||
+      confirmedPaymentAccount.owner !== PROGRAM_ID ||
+      accountBytes(confirmedPaymentAccount.data).length !== PAYMENT_SIZE ||
+      !confirmedRecipientAccount ||
+      confirmedRecipientAccount.owner !== PROGRAM_ID ||
+      accountBytes(confirmedRecipientAccount.data).length !== DEPOSIT_SIZE ||
+      senderForRecipient !== null
+    ) {
+      throw new Error("Confirmed recipient claim violated the private account boundary");
+    }
+    const confirmedPayment = getPaymentDecoder().decode(
+      accountBytes(confirmedPaymentAccount.data),
+    );
+    const confirmedRecipient = getDepositDecoder().decode(
+      accountBytes(confirmedRecipientAccount.data),
+    );
+    if (
+      !bytesEqual(confirmedPayment.discriminator, PAYMENT_DISCRIMINATOR) ||
+      !bytesEqual(confirmedPayment.paymentId, paymentBefore.paymentId) ||
+      confirmedPayment.sender !== paymentBefore.sender ||
+      confirmedPayment.recipient !== ZERO_ADDRESS ||
+      confirmedPayment.tokenMint !== paymentBefore.tokenMint ||
+      confirmedPayment.amount !== 0n ||
+      confirmedPayment.createdAt !== 0n ||
+      confirmedPayment.settleAfter !== 0n ||
+      confirmedPayment.expiresAt !== 0n ||
+      confirmedPayment.taskId !== 0n ||
+      confirmedPayment.status !== PaymentStatus.Settled ||
+      !bytesEqual(confirmedPayment.memoHash, ZERO_32) ||
+      !bytesEqual(
+        confirmedPayment.terminalCommitment,
+        expectedTerminalCommitment,
+      ) ||
+      !confirmedPayment.initialized ||
+      !confirmedPayment.redacted ||
+      confirmedPayment.version !== paymentBefore.version ||
+      confirmedPayment.bump !== paymentBefore.bump ||
+      !bytesEqual(confirmedRecipient.discriminator, DEPOSIT_DISCRIMINATOR) ||
+      confirmedRecipient.user !== recipientDepositBefore.user ||
+      confirmedRecipient.tokenMint !== recipientDepositBefore.tokenMint ||
+      confirmedRecipient.available !== PAYMENT_AMOUNT ||
+      confirmedRecipient.locked !== recipientDepositBefore.locked ||
+      confirmedRecipient.nextPaymentNonce !==
+        recipientDepositBefore.nextPaymentNonce ||
+      confirmedRecipient.automationPaused !==
+        recipientDepositBefore.automationPaused ||
+      confirmedRecipient.version !== recipientDepositBefore.version
+    ) {
+      throw new Error("Confirmed recipient claim failed terminal-state validation");
+    }
+
+    const [publicAfterSend, unauthenticatedAfterSend] = await Promise.all([
+      baseRpc
+        .getMultipleAccounts(
+          [addresses.payment, addresses.recipientDeposit, addresses.vaultUsdcAta],
+          { commitment: "finalized", encoding: "base64" },
+        )
+        .send(),
+      unauthenticatedRpc
+        .getMultipleAccounts(
+          [addresses.payment, addresses.deposit, addresses.recipientDeposit],
+          { commitment: "confirmed", encoding: "base64" },
+        )
+        .send(),
+    ]);
+    const [publicPaymentAfterSend, publicRecipientAfterSend, vaultAfterSend] =
+      publicAfterSend.value;
+    if (
+      !publicPaymentAfterSend ||
+      !publicRecipientAfterSend ||
+      !vaultAfterSend ||
+      !bytesEqual(
+        accountBytes(publicPaymentAfterSend.data),
+        accountBytes(publicPaymentAccount!.data),
+      ) ||
+      !bytesEqual(
+        accountBytes(publicRecipientAfterSend.data),
+        accountBytes(publicRecipientDepositAccount!.data),
+      ) ||
+      !bytesEqual(
+        accountBytes(vaultAfterSend.data),
+        accountBytes(vaultTokenAccount.data),
+      ) ||
+      unauthenticatedAfterSend.value.some((account) => account !== null)
+    ) {
+      throw new Error("Confirmed claim leaked into public or unauthenticated state");
+    }
+
+    console.log(
+      json({
+        confirmedRecipientClaim: {
+          cluster: "MagicBlock Private ER on Solana Devnet",
+          signature: preparedSignature,
+          confirmation,
+          feePayerAndSigner: V2_RECIPIENT,
+          instruction: "claim_payment",
+          payment: addresses.payment,
+          recipientDeposit: addresses.recipientDeposit,
+          paymentStatus: PaymentStatus[confirmedPayment.status],
+          paymentRedacted: confirmedPayment.redacted,
+          terminalCommitmentMatches: true,
+          recipientAvailable: confirmedRecipient.available,
+          recipientLocked: confirmedRecipient.locked,
+          senderDepositVisibleToRecipient: false,
+          splTokenMovement: "none; private accounting only",
+        },
+        privacyAfterClaim: {
+          publicStateChanged: false,
+          vaultBalanceChanged: false,
+          unauthenticatedProtectedReads: "all null",
+          authTokenPrinted: false,
+          authTokenStored: false,
+          hardwareAttestationIndependentlyVerified: false,
+        },
+      }),
+    );
+  }
   process.exit(0);
 }
 

@@ -1535,3 +1535,44 @@ Transaction broadcast: false
 ```
 
 This proves the corrected schedule's successful settlement path and the exact recipient recovery action. The claim simulation is intentionally non-persistent: 1 test USDC remains in Payment escrow until a separate explicit approval authorizes fresh authentication, signature-verified simulation, and broadcast of the recipient claim.
+
+## Version-2.1 recipient-claim broadcast
+
+After separate explicit approval, the claim runner enabled a claim-specific send flag while leaving the acknowledgement gate unchanged. The recipient authenticated again, the exact live `Settled` Payment and zero-balance recipient Deposit were revalidated, and fresh transaction bytes repeated the complete signature-verified simulation before submission.
+
+The same 286-byte transaction then finalized on the Private ER. Authenticated readback proved the full terminal state: the recipient received the 1 test-USDC internal credit, the Payment escrow and sensitive terms were cleared, the locally reproduced commitment matched, and the recipient still could not access the sender Deposit.
+
+```text
+Private ER: https://devnet-tee.magicblock.app
+Recipient: HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr
+Payment: 71t8qrKg2cFVSceBEFL4RtmKrfhRcMWzyvq4yh4PwikZ
+Recipient Deposit: DJU7iPmejpGXAxAs3apWA7ZmWob33cnc3ebAZ7YQ5nxK
+Fresh authenticated preflight slot: 301011982
+Fresh signed simulation slot: 301011996
+Finalized signature: 52Ec7dorKoShKJdtTeDogyjMt5aXwi1xcFHiKmGVwzmX6GiFwpeibALmtEsJVmp5UzeXcio5pRe8d5rrSjeuKHW9
+Finalized Private ER slot: 301012025
+Instruction: claim_payment
+Transaction size: 286 bytes
+Simulation error: none
+Compute units consumed: 11,691
+Private ER fee reported by simulation: unavailable
+Payment status: Settled
+Payment redacted: true
+Payment amount / task / timestamps / memo after: zeroed
+Terminal commitment matches: true
+Recipient available: 0 -> 1.000000 test USDC
+Recipient locked: 0
+Sender Deposit included: false
+Sender Deposit visible to recipient: false
+SPL token movement: none; private accounting only
+Protected data found in logs: false
+Public delegated snapshots changed: false
+Vault balance changed: false
+Vault collateral: 3.000000 test USDC
+Unauthenticated protected reads: all null
+Bearer token printed or persisted: false
+Hardware attestation independently verified: false
+Transaction status: finalized
+```
+
+This completes the corrected live settlement lifecycle from empty base-layer shell through private open, automated scheduling, recipient acknowledgement, autonomous settlement, and recipient claim. The next Phase 4 proof must use a distinct fresh Payment fixture, omit acknowledgement, observe automatic `Created -> Expired` at the sixth execution, and let only the sender reclaim the escrow.

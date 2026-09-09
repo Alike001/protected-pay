@@ -24,6 +24,8 @@ The separately approved live version-2.1 open and six-call schedule finalized on
 
 Recipient-authenticated readback now confirms the live Payment autonomously reached `Settled`. A signature-verified claim simulation credits the recipient's private available balance from 0 to 1 test USDC and redacts the Payment behind the verified terminal commitment; the simulation persisted nothing and claim broadcast remains separately gated.
 
+The approved recipient claim subsequently finalized on the Private ER. The recipient now holds 1 test USDC in private available accounting, the Payment remains `Settled` with sensitive terms redacted and escrow cleared, and the public vault still holds all 3 test USDC collateral. This completes the corrected live settlement path; the fresh unattended-expiry path remains next.
+
 ## Source layout
 
 - `programs/protected-pay`: clean-room Anchor program
