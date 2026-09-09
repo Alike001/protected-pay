@@ -93,3 +93,25 @@ No program upgrade or transaction was signed or sent during this local phase.
 - Estimated shortfall before transaction fees: approximately 1.48827536 SOL
 
 A 2 SOL Devnet top-up gives a reasonable fee cushion. This is only a calculation from read-only RPC and rent queries; no faucet request, signature, buffer creation, extension, or upgrade was attempted.
+
+## Approved top-up and signed simulation
+
+The approved faucet top-up was attempted at 2 SOL, 1 SOL, and 0.5 SOL. Every request was rejected by the Devnet faucet rate limiter. No SOL arrived; the authority balance remained exactly 2.51507452 SOL.
+
+A signed, non-broadcast `ExtendProgram` transaction was then simulated against Devnet. Before signing, the script validated the Program account owner/executable flag, ProgramData owner, 482,421-byte account length, ProgramData discriminator, stored upgrade authority, fee-payer owner, and signer address.
+
+```text
+Simulation error: null
+Signature verification: passed
+Transaction broadcast: false
+Additional bytes: 152,760
+Simulated ProgramData data length: 635,181 bytes including loader metadata
+Compute units consumed: 1,310
+Estimated fee: 5,000 lamports
+Authority: 2.51507452 SOL -> 1.73904872 SOL (simulated only)
+ProgramData: 2.45134892 SOL -> 3.22736972 SOL (simulated only)
+```
+
+The newer `ExtendProgramChecked` variant was first tested and rejected by the current Devnet loader as invalid instruction data. No broadcast occurred. The successful simulation uses the legacy `ExtendProgram` wire instruction used by the installed CLI; the script still independently checks the stored upgrade authority before signing.
+
+The live program remains unchanged at 482,376 bytes. The actual upgrade remains funding-blocked because the refundable 3.22732908 SOL upload buffer cannot be created from the current 2.51507452 SOL authority balance. At least approximately 1.48827536 additional SOL plus fees is still required.

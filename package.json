@@ -38,6 +38,7 @@
     "gate2:verify:delegation": "tsx scripts/gate2-verify-delegation.ts",
     "gate2:verify:bootstrap": "tsx scripts/gate2-verify-bootstrap.ts",
     "gate3:audit:bootstrap": "tsx scripts/gate3-audit-public-bootstrap.ts",
+    "p4:simulate:program-extend": "tsx scripts/p4-simulate-program-extend.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
