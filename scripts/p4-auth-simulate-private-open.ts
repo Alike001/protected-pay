@@ -106,7 +106,9 @@ const PRIVATE_POST_OPEN_NONCE = PRIVATE_PRE_OPEN_NONCE + 1n;
 const PRIVATE_POST_OPEN_LOCKED = V2_MODE ? 0n : PAYMENT_AMOUNT;
 const MAGIC_PROGRAM = "Magic11111111111111111111111111111111111111" as Address;
 const EXECUTION_INTERVAL_MILLIS = 60_000n;
-const ITERATIONS = 5n;
+// MagicBlock executes iteration 1 immediately, so six runs cover
+// createdAt + 0, +60, +120, +180, +240, and the +300 expiry boundary.
+const ITERATIONS = 6n;
 const CONFIG_SIZE = 154;
 const PAYMENT_SIZE = 245;
 const DEPOSIT_SIZE = 98;

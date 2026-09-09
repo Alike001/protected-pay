@@ -4,7 +4,7 @@ Date: 2026-09-09
 
 ## Result
 
-**V1 LIVE RECOVERY PASS / V2 ATOMIC LIVE / V2 CRANK CADENCE FIX REQUIRED**
+**V1 LIVE RECOVERY PASS / V2 ATOMIC LIVE / V2.1 SIX-ITERATION LOCAL PASS**
 
 The Anchor program now implements the complete protected-payment lifecycle:
 
@@ -14,7 +14,7 @@ The Anchor program now implements the complete protected-payment lifecycle:
 - recipient-only acknowledgement;
 - sender-only cancellation and recovery;
 - permissionless deterministic settlement or expiry;
-- a fixed 60-second MagicBlock Crank schedule, currently five iterations and proven to require six;
+- a fixed six-iteration, 60-second MagicBlock Crank schedule that reaches the 300-second expiry boundary;
 - owner-only settlement/expiry claims followed by atomic terminal redaction;
 - authority-controlled timing updates that affect only future payments.
 
@@ -24,7 +24,7 @@ The older `CrankProbe` remains temporarily so the already-recorded G2/G3 evidenc
 
 ```text
 cargo test -p protected-pay --lib --locked
-PASS: 22 passed, 0 failed
+PASS: 23 passed, 0 failed
 
 NO_DNA=1 npm run idl
 PASS
@@ -48,7 +48,7 @@ NO_DNA=1 RUSTUP_TOOLCHAIN=1.89.0-sbpf-solana-v1.53 \
   --manifest-path programs/protected-pay/Cargo.toml -- --locked
 
 PASS: target/deploy/protected_pay.so (633,568 bytes)
-SHA-256: 5b2f04b8b347a85e5f7f03dc9305709aaaab7fb538738d348919a8811756d6f5
+SHA-256: e7998fcd2c85f5accead0ba7e6317dfb6bfebed210ea1d18a0b622047d4f78f1
 ```
 
 ## Covered invariants
@@ -950,3 +950,43 @@ Acknowledgement broadcast: false
 ```
 
 The failure is a schedule-cadence defect, not a custody or privacy failure: the 1 test USDC remains in the private per-Payment escrow, neither party's aggregate Deposit was exposed, and no late recipient action was authorized. The correction is six 60-second iterations (immediate, then `+60` through `+300`) or an absolute-deadline task. The current escrow requires an explicitly approved manual `advance_payment` before the sender-only expired claim can recover it.
+
+## Version-2.1 six-iteration local correction
+
+The local program and guarded atomic-open client now require exactly six executions at 60-second intervals. The Payment account layout, instruction schema, IDL, and stored `version = 2` remain unchanged, so the patch is compatible with existing version-2 state. “Version 2.1” is a release label for the cadence correction, not a new account-data version.
+
+A regression test reproduces the empirically observed immediate-first-run schedule. It invokes `advance` at offsets `0, 60, 120, 180, 240, 300`, asserts that the Payment remains `Created` through the first five calls, and asserts that the sixth call changes it to `Expired` exactly at the immutable deadline.
+
+```text
+cargo fmt --all -- --check
+PASS
+
+cargo test -p protected-pay --lib --locked
+PASS: 23 passed, 0 failed
+
+NO_DNA=1 npm run idl
+PASS
+
+npm run client:generate
+PASS: generated output unchanged
+
+npm run typecheck
+PASS
+
+cargo clippy -p protected-pay --lib --tests --locked -- -D warnings
+PASS
+
+NO_DNA=1 RUSTUP_TOOLCHAIN=1.89.0-sbpf-solana-v1.53 \
+  cargo-build-sbf --skip-tools-install --optimize-size \
+  --features no-log-ix-name,no-idl \
+  --manifest-path programs/protected-pay/Cargo.toml -- --locked
+PASS
+
+Optimized binary: target/deploy/protected_pay.so
+Binary size: 633,568 bytes
+SHA-256: e7998fcd2c85f5accead0ba7e6317dfb6bfebed210ea1d18a0b622047d4f78f1
+Transactions signed: none
+Transactions broadcast: none
+```
+
+The next deployment gate is a signature-verified, non-broadcast simulation of upgrading the existing Devnet program to this exact binary. The current escrow is not modified by the local correction.

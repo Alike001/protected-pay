@@ -25,6 +25,8 @@ pub const DEPOSIT_SEED: &[u8] = b"deposit";
 pub const PAYMENT_SEED: &[u8] = b"payment";
 pub const CRANK_PROBE_SEED: &[u8] = b"crank-probe";
 pub const PAYMENT_VERSION: u8 = 2;
+pub const PAYMENT_CRANK_INTERVAL_MILLIS: i64 = 60_000;
+pub const PAYMENT_CRANK_ITERATIONS: i64 = 6;
 
 #[ephemeral]
 #[program]
@@ -400,7 +402,8 @@ pub mod protected_pay {
     ) -> Result<()> {
         require!(args.task_id > 0, ProtectedPayError::InvalidCrankSchedule);
         require!(
-            args.execution_interval_millis == 60_000 && args.iterations == 5,
+            args.execution_interval_millis == PAYMENT_CRANK_INTERVAL_MILLIS
+                && args.iterations == PAYMENT_CRANK_ITERATIONS,
             ProtectedPayError::InvalidCrankSchedule
         );
 
@@ -2216,6 +2219,37 @@ mod tests {
         assert_eq!(sender.available, 5_000_000);
         assert_eq!(payment.amount, 0);
         assert!(payment.redacted);
+    }
+
+    #[test]
+    fn six_immediate_first_crank_iterations_reach_expiry_boundary() {
+        let (mut payment, mut sender, _) = payment_fixture(5_000_000);
+        let sender_actor = payment.sender;
+        let created_at = 100;
+        payment
+            .open(
+                &mut sender,
+                sender_actor,
+                2_000_000,
+                [5; 32],
+                created_at,
+                60,
+                300,
+            )
+            .unwrap();
+
+        let interval_seconds = PAYMENT_CRANK_INTERVAL_MILLIS / 1_000;
+        for iteration in 0..PAYMENT_CRANK_ITERATIONS {
+            let execution_time = created_at + iteration * interval_seconds;
+            payment.advance(execution_time).unwrap();
+
+            if iteration + 1 < PAYMENT_CRANK_ITERATIONS {
+                assert_eq!(payment.status, PaymentStatus::Created);
+            } else {
+                assert_eq!(execution_time, payment.expires_at);
+                assert_eq!(payment.status, PaymentStatus::Expired);
+            }
+        }
     }
 
     #[test]
