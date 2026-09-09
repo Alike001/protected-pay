@@ -76,14 +76,28 @@ export const V2_SETTLEMENT_PAYMENT_LABEL =
 export const V2_SETTLEMENT_PAYMENT_ID = new Uint8Array(
   createHash("sha256").update(V2_SETTLEMENT_PAYMENT_LABEL).digest(),
 );
+export const V21_SETTLEMENT_PAYMENT_LABEL =
+  "protected-pay:phase4:v2.1:settlement:1";
+export const V21_SETTLEMENT_PAYMENT_ID = new Uint8Array(
+  createHash("sha256").update(V21_SETTLEMENT_PAYMENT_LABEL).digest(),
+);
 const ZERO_32 = new Uint8Array(32);
 const CONFIG_SIZE = 154;
 const DEPOSIT_SIZE = 98;
 const PAYMENT_SIZE = 245;
 const PERMISSION_SIZE = 567;
 const COMPUTE_UNIT_LIMIT = 300_000;
+const V21_SETTLEMENT_MODE = process.argv.includes("--v21-settlement");
 const SEND_REQUESTED = process.argv.includes("--send");
-const APPROVAL_FLAG = "--approved-p4-v2-settlement-bootstrap";
+const APPROVAL_FLAG = V21_SETTLEMENT_MODE
+  ? "--approved-p4-v21-settlement-bootstrap"
+  : "--approved-p4-v2-settlement-bootstrap";
+const PAYMENT_LABEL = V21_SETTLEMENT_MODE
+  ? V21_SETTLEMENT_PAYMENT_LABEL
+  : V2_SETTLEMENT_PAYMENT_LABEL;
+const PAYMENT_ID = V21_SETTLEMENT_MODE
+  ? V21_SETTLEMENT_PAYMENT_ID
+  : V2_SETTLEMENT_PAYMENT_ID;
 
 type EncodedAccountData = readonly [string, string];
 
@@ -134,7 +148,7 @@ async function permissionPda(protectedAccount: Address) {
   return permission;
 }
 
-export async function deriveV2SettlementAddresses() {
+async function deriveSettlementAddresses(paymentId: ReadonlyUint8Array) {
   const sender = await deriveAddresses();
   const [[recipientDeposit], [payment]] = await Promise.all([
     findDepositPda(
@@ -142,7 +156,7 @@ export async function deriveV2SettlementAddresses() {
       { programAddress: PROGRAM_ID },
     ),
     findPaymentPda(
-      { paymentId: V2_SETTLEMENT_PAYMENT_ID },
+      { paymentId },
       { programAddress: PROGRAM_ID },
     ),
   ]);
@@ -160,17 +174,29 @@ export async function deriveV2SettlementAddresses() {
   } as const;
 }
 
+export async function deriveV2SettlementAddresses() {
+  return deriveSettlementAddresses(V2_SETTLEMENT_PAYMENT_ID);
+}
+
+export async function deriveV21SettlementAddresses() {
+  return deriveSettlementAddresses(V21_SETTLEMENT_PAYMENT_ID);
+}
+
+async function deriveSelectedSettlementAddresses() {
+  return deriveSettlementAddresses(PAYMENT_ID);
+}
+
 async function buildInstructions(
   senderSigner: TransactionSigner,
 ): Promise<Instruction[]> {
-  const addresses = await deriveV2SettlementAddresses();
+  const addresses = await deriveSelectedSettlementAddresses();
   return [
     getSetComputeUnitLimitInstruction({ units: COMPUTE_UNIT_LIMIT }),
     await getPreparePaymentInstructionAsync({
       sender: senderSigner,
       config: addresses.config,
       payment: addresses.payment,
-      paymentId: V2_SETTLEMENT_PAYMENT_ID,
+      paymentId: PAYMENT_ID,
       recipient: V2_RECIPIENT,
     }),
     getCreatePaymentPermissionInstruction({
@@ -186,7 +212,7 @@ async function buildInstructions(
 const rpc = createSolanaRpc(RPC_URL);
 
 async function loadValidatedPreState() {
-  const addresses = await deriveV2SettlementAddresses();
+  const addresses = await deriveSelectedSettlementAddresses();
   const response = await rpc
     .getMultipleAccounts(
       [
@@ -360,7 +386,7 @@ function validateSimulatedFixture(
   const payment = getPaymentDecoder().decode(accountBytes(paymentAccount.data));
   assertDiscriminator(payment.discriminator, PAYMENT_DISCRIMINATOR, "Payment");
   if (
-    !bytesEqual(payment.paymentId, V2_SETTLEMENT_PAYMENT_ID) ||
+    !bytesEqual(payment.paymentId, PAYMENT_ID) ||
     payment.sender !== AUTHORITY ||
     payment.recipient !== V2_RECIPIENT ||
     payment.tokenMint !== USDC_MINT ||
@@ -439,8 +465,8 @@ async function simulateBootstrap() {
         signers: [AUTHORITY],
         recipientSignatureRequired: false,
         instructions: ["prepare_payment", "create_payment_permission"],
-        paymentLabel: V2_SETTLEMENT_PAYMENT_LABEL,
-        paymentIdHex: Buffer.from(V2_SETTLEMENT_PAYMENT_ID).toString("hex"),
+        paymentLabel: PAYMENT_LABEL,
+        paymentIdHex: Buffer.from(PAYMENT_ID).toString("hex"),
         payment: before.addresses.payment,
         paymentPermission: before.addresses.paymentPermission,
         usdcMoved: "0",

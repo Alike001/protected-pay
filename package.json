@@ -46,6 +46,8 @@
     "p4:send:v21-upgrade": "tsx scripts/p4-simulate-v2-exact-upgrade.ts --approved-exact-v21-devnet-upgrade-signed-simulation --send --approved-v21-devnet-program-upgrade",
     "p4:v2:simulate:settlement-bootstrap": "tsx scripts/p4-v2-settlement-bootstrap.ts",
     "p4:v2:send:settlement-bootstrap": "tsx scripts/p4-v2-settlement-bootstrap.ts --send --approved-p4-v2-settlement-bootstrap",
+    "p4:v21:simulate:settlement-bootstrap": "tsx scripts/p4-v2-settlement-bootstrap.ts --v21-settlement",
+    "p4:v21:send:settlement-bootstrap": "tsx scripts/p4-v2-settlement-bootstrap.ts --v21-settlement --send --approved-p4-v21-settlement-bootstrap",
     "p4:v2:simulate:settlement-delegation": "tsx scripts/p4-v2-settlement-delegation.ts",
     "p4:v2:send:settlement-delegation": "tsx scripts/p4-v2-settlement-delegation.ts --send --approved-p4-v2-settlement-delegation",
     "p4:v2:verify:settlement-delegation": "tsx scripts/p4-v2-settlement-delegation.ts --verify-finalized",

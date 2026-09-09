@@ -1236,3 +1236,41 @@ Hardware attestation independently verified: false
 ```
 
 This resolves the only escrow stranded by the original five-call scheduling defect. The operation required no recipient cooperation, exposed no protected amount or memo in program logs, did not move SPL tokens, and could not leave an intermediate `Expired`-but-unclaimed state because advance and claim shared one transaction. The next live proof uses fresh version-2 Payment accounts scheduled by the deployed version-2.1 six-iteration code.
+
+## Version-2.1 fresh settlement bootstrap simulation
+
+The first corrected live-lifecycle proof uses a new deterministic Payment ID and address, preserving the old-cadence fixture as immutable evidence. The existing bootstrap runner was extended with an isolated version-2.1 settlement mode and separate approval flag; its historical version-2 behavior and addresses remain unchanged.
+
+The unsigned runner validated the deployed program, exact Config and `60/300` timing policy, both delegated Deposit identities and permissions, sender and recipient system accounts, and the executable Permission Program. It proved the new Payment and permission were absent, then simulated `prepare_payment` plus `create_payment_permission` with a no-op signer. No keypair was loaded and signature verification was intentionally disabled only for this unsigned construction checkpoint.
+
+```text
+Cluster: Solana Devnet
+Finalized pre-state slot: 495759293
+Simulation slot: 495759329
+Program: w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk
+Payment label: protected-pay:phase4:v2.1:settlement:1
+Payment ID: a5fbd04b14a416b71fb3549092cb88717ca2b5ebb205ebc00ec831ac92874261
+Payment: 71t8qrKg2cFVSceBEFL4RtmKrfhRcMWzyvq4yh4PwikZ
+Payment permission: CAjEn5BnHunwprwxHSoANJLCGBDkMt1YKTeqnbtVi9bP
+Payment and permission absent before simulation: true
+Instructions: prepare_payment, create_payment_permission
+Fee payer and proposed signer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Recipient signature required: false
+Transaction size: 464 bytes
+Simulation error: none
+Compute units consumed: 27,814
+Estimated fee: 5,000 lamports
+Estimated fee plus rent: 5,430,440 lamports
+Estimated account rent: 5,425,440 lamports
+Payment version after simulation: 2
+Payment amount / initialized after simulation: 0 / false
+Sender and recipient publicly named by shell: true
+Both existing Deposits already delegated: true
+Existing Deposit data changed: false
+USDC moved: 0
+User-to-user SOL transfer: 0
+Signed: false
+Broadcast: false
+```
+
+This checkpoint proves only safe construction and base-Devnet account creation behavior. A separate approval is required to load the sender signer, rerun signature-verified simulation with a fresh blockhash, and broadcast the shell/permission creation. Delegation, private open plus six-call scheduling, recipient acknowledgement, automated settlement, and recipient claim remain later gated steps.
