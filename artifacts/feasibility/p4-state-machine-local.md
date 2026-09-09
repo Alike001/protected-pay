@@ -182,3 +182,33 @@ Tokens transferred: none
 ```
 
 The finalized post-state revalidated the Config program owner, 154-byte allocation, discriminator, identity fields, and exact `60/300` policy.
+
+## Sender-only payment bootstrap preflight
+
+The first bootstrap design created the recipient Deposit permission in the sender transaction, which required both wallets to co-sign. That was rejected as a product workflow because a sender must be able to create a payment while the recipient is offline. The corrected bootstrap creates only what the sender can safely prepare; recipient permission creation is deferred until the recipient opens the payment link.
+
+The unsigned client validated the deployed program, finalized `60/300` Config, empty vault liability, sender Deposit and nonce, Circle Devnet USDC token accounts, existing delegated sender permission, candidate recipient system account, Permission Program, and absence of every init-only account. It then simulated with a no-op sender signer.
+
+```text
+Finalized pre-state slot: 495545767
+Simulation slot: 495545804
+Sender: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Candidate recipient: HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr
+Payment ID: 5116f610de73e51223722b7aecba79d15a6f9f323c818a6d7ed20d38f01243ce
+Transaction size: 765 bytes
+Instructions: deposit_usdc, initialize recipient Deposit, prepare Payment, create Payment permission
+Sender signature required: yes
+Recipient signature required: no
+Test USDC deposited: 3.000000
+Payment amount in public shell: 0
+Simulation error: null
+Compute units consumed: 64,643
+Estimated fee: 5,000 lamports
+Permanent account rent plus fee: 6,578,520 lamports
+Wallet test USDC: 20.000000 -> 17.000000
+Vault test USDC/liability: 0 -> 3.000000
+Sender available/locked: 0/0 -> 3.000000/0
+Recipient available/locked: absent -> 0/0
+Signed: false
+Broadcast: false
+```
