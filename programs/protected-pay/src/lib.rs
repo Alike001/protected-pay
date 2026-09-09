@@ -15,12 +15,14 @@ use ephemeral_rollups_sdk::consts::PERMISSION_PROGRAM_ID;
 use ephemeral_rollups_sdk::cpi::DelegateConfig;
 use ephemeral_rollups_sdk::ephem::MagicIntentBundleBuilder;
 use magicblock_magic_program_api::{args::ScheduleTaskArgs, instruction::MagicBlockInstruction};
+use solana_sha256_hasher::hashv;
 
 declare_id!("w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk");
 
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const VAULT_SEED: &[u8] = b"vault";
 pub const DEPOSIT_SEED: &[u8] = b"deposit";
+pub const PAYMENT_SEED: &[u8] = b"payment";
 pub const CRANK_PROBE_SEED: &[u8] = b"crank-probe";
 
 #[ephemeral]
@@ -57,6 +59,19 @@ pub mod protected_pay {
         });
 
         Ok(())
+    }
+
+    /// Changes policy only for future payments. Every open Payment keeps the
+    /// deadlines copied into it, so the authority cannot shorten an active
+    /// sender's recovery window.
+    pub fn update_timing_policy(
+        ctx: Context<UpdateTimingPolicy>,
+        safety_window_seconds: i64,
+        claim_window_seconds: i64,
+    ) -> Result<()> {
+        ctx.accounts
+            .config
+            .update_timing_policy(safety_window_seconds, claim_window_seconds)
     }
 
     pub fn initialize_vault(ctx: Context<InitializeVault>) -> Result<()> {
@@ -203,6 +218,282 @@ pub mod protected_pay {
             ctx.accounts.token_mint.decimals,
         )?;
 
+        Ok(())
+    }
+
+    /// Creates a public, amount-free shell before it is permissioned and
+    /// delegated. Sender/recipient relationship metadata is deliberately not
+    /// part of the privacy claim; amount, memo, live status, and balances are.
+    pub fn prepare_payment(
+        ctx: Context<PreparePayment>,
+        payment_id: [u8; 32],
+        recipient: Pubkey,
+    ) -> Result<()> {
+        require_keys_neq!(
+            ctx.accounts.sender.key(),
+            recipient,
+            ProtectedPayError::SameParty
+        );
+        require_keys_neq!(
+            recipient,
+            Pubkey::default(),
+            ProtectedPayError::InvalidRecipient
+        );
+
+        ctx.accounts.payment.set_inner(Payment {
+            payment_id,
+            sender: ctx.accounts.sender.key(),
+            recipient,
+            token_mint: ctx.accounts.config.allowed_mint,
+            amount: 0,
+            created_at: 0,
+            settle_after: 0,
+            expires_at: 0,
+            task_id: 0,
+            status: PaymentStatus::Created,
+            memo_hash: [0; 32],
+            terminal_commitment: [0; 32],
+            initialized: false,
+            redacted: false,
+            version: 1,
+            bump: ctx.bumps.payment,
+        });
+        Ok(())
+    }
+
+    pub fn create_payment_permission(ctx: Context<CreatePaymentPermission>) -> Result<()> {
+        let permission_program = ctx.accounts.permission_program.to_account_info();
+        let payment = ctx.accounts.payment.to_account_info();
+        let permission = ctx.accounts.permission.to_account_info();
+        let payer = ctx.accounts.payer.to_account_info();
+        let system_program = ctx.accounts.system_program.to_account_info();
+        let member_flags = AUTHORITY_FLAG
+            | TX_LOGS_FLAG
+            | TX_BALANCES_FLAG
+            | TX_MESSAGE_FLAG
+            | ACCOUNT_SIGNATURES_FLAG;
+        let members = MembersArgs {
+            members: Some(vec![
+                Member {
+                    flags: member_flags,
+                    pubkey: ctx.accounts.payment.sender,
+                },
+                Member {
+                    flags: member_flags,
+                    pubkey: ctx.accounts.payment.recipient,
+                },
+            ]),
+        };
+        let payment_id = ctx.accounts.payment.payment_id;
+        let bump = [ctx.accounts.payment.bump];
+        let payment_seeds: &[&[u8]] = &[PAYMENT_SEED, payment_id.as_ref(), &bump];
+
+        CreatePermissionCpiBuilder::new(&permission_program)
+            .permissioned_account(&payment)
+            .permission(&permission)
+            .payer(&payer)
+            .system_program(&system_program)
+            .args(members)
+            .invoke_signed(&[payment_seeds])?;
+        Ok(())
+    }
+
+    pub fn delegate_payment_permission(ctx: Context<DelegatePaymentPermission>) -> Result<()> {
+        DelegatePermissionCpiBuilder::new(&ctx.accounts.permission_program.to_account_info())
+            .payer(&ctx.accounts.payer.to_account_info())
+            .authority(&ctx.accounts.sender.to_account_info(), true)
+            .permissioned_account(&ctx.accounts.payment.to_account_info(), false)
+            .permission(&ctx.accounts.permission.to_account_info())
+            .system_program(&ctx.accounts.system_program.to_account_info())
+            .owner_program(&ctx.accounts.permission_program.to_account_info())
+            .delegation_buffer(&ctx.accounts.delegation_buffer.to_account_info())
+            .delegation_record(&ctx.accounts.delegation_record.to_account_info())
+            .delegation_metadata(&ctx.accounts.delegation_metadata.to_account_info())
+            .delegation_program(&ctx.accounts.delegation_program.to_account_info())
+            .validator(Some(&ctx.accounts.validator.to_account_info()))
+            .invoke()?;
+        Ok(())
+    }
+
+    pub fn delegate_payment(ctx: Context<DelegatePayment>, payment_id: [u8; 32]) -> Result<()> {
+        let data = ctx.accounts.payment.try_borrow_data()?;
+        let mut slice: &[u8] = &data;
+        let payment = Payment::try_deserialize(&mut slice)?;
+        require_keys_eq!(
+            payment.sender,
+            ctx.accounts.sender.key(),
+            ProtectedPayError::Unauthorized
+        );
+        require!(
+            payment.payment_id == payment_id && !payment.initialized,
+            ProtectedPayError::InvalidPaymentShell
+        );
+        drop(data);
+
+        ctx.accounts.delegate_payment(
+            &ctx.accounts.payer,
+            &[PAYMENT_SEED, payment_id.as_ref()],
+            DelegateConfig {
+                validator: Some(ctx.accounts.validator.key()),
+                ..DelegateConfig::default()
+            },
+        )?;
+        Ok(())
+    }
+
+    /// Writes the private terms only after the shell has been delegated.
+    pub fn open_payment(
+        ctx: Context<OpenPayment>,
+        payment_id: [u8; 32],
+        amount: u64,
+        memo_hash: [u8; 32],
+    ) -> Result<()> {
+        require!(
+            ctx.accounts.payment.payment_id == payment_id,
+            ProtectedPayError::InvalidPaymentShell
+        );
+        let now = Clock::get()?.unix_timestamp;
+        ctx.accounts.payment.open(
+            &mut ctx.accounts.sender_deposit,
+            ctx.accounts.sender.key(),
+            amount,
+            memo_hash,
+            now,
+            ctx.accounts.config.safety_window_seconds,
+            ctx.accounts.config.claim_window_seconds,
+        )
+    }
+
+    /// Recipient confirmation never needs access to the sender's Deposit.
+    pub fn acknowledge_payment(ctx: Context<AcknowledgePayment>) -> Result<()> {
+        ctx.accounts
+            .payment
+            .acknowledge(ctx.accounts.recipient.key(), Clock::get()?.unix_timestamp)
+    }
+
+    pub fn cancel_payment(ctx: Context<CancelPayment>) -> Result<()> {
+        ctx.accounts
+            .payment
+            .cancel(&mut ctx.accounts.sender_deposit, ctx.accounts.sender.key())
+    }
+
+    /// Permissionless and signer-free. Every financial term comes from Payment.
+    /// Early, late, duplicated, and post-terminal calls are safe.
+    pub fn advance_payment(ctx: Context<AdvancePayment>) -> Result<()> {
+        ctx.accounts.payment.advance(
+            &mut ctx.accounts.sender_deposit,
+            &mut ctx.accounts.recipient_deposit,
+            Clock::get()?.unix_timestamp,
+        )
+    }
+
+    /// Registers the same stored, signer-free instruction for repeated Crank
+    /// execution. The task cannot supply or change payment terms.
+    pub fn schedule_payment<'info>(
+        ctx: Context<'info, SchedulePayment<'info>>,
+        payment_id: [u8; 32],
+        args: SchedulePaymentArgs,
+    ) -> Result<()> {
+        require!(args.task_id > 0, ProtectedPayError::InvalidCrankSchedule);
+        require!(
+            args.execution_interval_millis == 60_000 && args.iterations == 5,
+            ProtectedPayError::InvalidCrankSchedule
+        );
+
+        require_keys_eq!(
+            *ctx.accounts.payment.owner,
+            crate::ID,
+            ProtectedPayError::InvalidAccountOwner
+        );
+        require_keys_eq!(
+            *ctx.accounts.sender_deposit.owner,
+            crate::ID,
+            ProtectedPayError::InvalidAccountOwner
+        );
+        require_keys_eq!(
+            *ctx.accounts.recipient_deposit.owner,
+            crate::ID,
+            ProtectedPayError::InvalidAccountOwner
+        );
+
+        let payment_data = ctx.accounts.payment.try_borrow_data()?;
+        let mut payment_slice: &[u8] = &payment_data;
+        let mut payment = Payment::try_deserialize(&mut payment_slice)?;
+        require!(
+            payment.payment_id == payment_id,
+            ProtectedPayError::InvalidPaymentShell
+        );
+        payment.validate_schedule_accounts(
+            ctx.accounts.payer.key(),
+            ctx.accounts.sender_deposit.key(),
+            ctx.accounts.recipient_deposit.key(),
+        )?;
+        require!(
+            payment.task_id == 0,
+            ProtectedPayError::TaskAlreadyScheduled
+        );
+        payment.task_id = args.task_id;
+        drop(payment_data);
+
+        let mut payment_data = ctx.accounts.payment.try_borrow_mut_data()?;
+        let mut output: &mut [u8] = &mut payment_data;
+        payment.try_serialize(&mut output)?;
+        drop(payment_data);
+
+        let advance_ix = Instruction {
+            program_id: crate::ID,
+            accounts: vec![
+                AccountMeta::new(ctx.accounts.payment.key(), false),
+                AccountMeta::new(ctx.accounts.sender_deposit.key(), false),
+                AccountMeta::new(ctx.accounts.recipient_deposit.key(), false),
+            ],
+            data: anchor_lang::InstructionData::data(&crate::instruction::AdvancePayment {}),
+        };
+        let schedule_ix = Instruction::new_with_bincode(
+            ctx.accounts.magic_program.key(),
+            &MagicBlockInstruction::ScheduleTask(ScheduleTaskArgs {
+                task_id: args.task_id,
+                execution_interval_millis: args.execution_interval_millis,
+                iterations: args.iterations,
+                instructions: vec![advance_ix],
+            }),
+            vec![
+                AccountMeta::new(ctx.accounts.payer.key(), true),
+                AccountMeta::new(ctx.accounts.payer.key(), true),
+                AccountMeta::new(ctx.accounts.payment.key(), false),
+                AccountMeta::new(ctx.accounts.sender_deposit.key(), false),
+                AccountMeta::new(ctx.accounts.recipient_deposit.key(), false),
+            ],
+        );
+        invoke(
+            &schedule_ix,
+            &[
+                ctx.accounts.payer.to_account_info(),
+                ctx.accounts.payer.to_account_info(),
+                ctx.accounts.payment.to_account_info(),
+                ctx.accounts.sender_deposit.to_account_info(),
+                ctx.accounts.recipient_deposit.to_account_info(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn redact_terminal_payment(ctx: Context<RedactTerminalPayment>) -> Result<()> {
+        ctx.accounts.payment.redact()
+    }
+
+    pub fn commit_and_undelegate_payment(ctx: Context<CommitAndUndelegatePayment>) -> Result<()> {
+        require!(
+            ctx.accounts.payment.redacted,
+            ProtectedPayError::NotRedacted
+        );
+        MagicIntentBundleBuilder::new(
+            ctx.accounts.payer.to_account_info(),
+            ctx.accounts.magic_context.to_account_info(),
+            ctx.accounts.magic_program.to_account_info(),
+        )
+        .commit_and_undelegate(&[ctx.accounts.payment.to_account_info()])
+        .build_and_invoke()?;
         Ok(())
     }
 
@@ -450,6 +741,18 @@ pub struct InitializeConfig<'info> {
 }
 
 #[derive(Accounts)]
+pub struct UpdateTimingPolicy<'info> {
+    pub authority: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [CONFIG_SEED],
+        bump = config.bump,
+        has_one = authority,
+    )]
+    pub config: Account<'info, Config>,
+}
+
+#[derive(Accounts)]
 pub struct InitializeVault<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -633,6 +936,281 @@ pub struct ModifyBalance<'info> {
     #[account(address = config.allowed_mint @ ProtectedPayError::WrongMint)]
     pub token_mint: Account<'info, Mint>,
     pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+#[instruction(payment_id: [u8; 32], recipient: Pubkey)]
+pub struct PreparePayment<'info> {
+    #[account(mut)]
+    pub sender: Signer<'info>,
+    #[account(
+        seeds = [CONFIG_SEED],
+        bump = config.bump,
+    )]
+    pub config: Account<'info, Config>,
+    #[account(
+        init,
+        payer = sender,
+        space = 8 + Payment::INIT_SPACE,
+        seeds = [PAYMENT_SEED, payment_id.as_ref()],
+        bump,
+    )]
+    pub payment: Account<'info, Payment>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct CreatePaymentPermission<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub sender: Signer<'info>,
+    #[account(
+        seeds = [PAYMENT_SEED, payment.payment_id.as_ref()],
+        bump = payment.bump,
+        constraint = payment.sender == sender.key() @ ProtectedPayError::Unauthorized,
+        constraint = !payment.initialized @ ProtectedPayError::PaymentAlreadyOpen,
+    )]
+    pub payment: Account<'info, Payment>,
+    /// CHECK: Address is derived from the protected Payment.
+    #[account(mut, address = Permission::find_pda(&payment.key()).0)]
+    pub permission: UncheckedAccount<'info>,
+    /// CHECK: Fixed to MagicBlock's Permission Program ID.
+    #[account(address = PERMISSION_PROGRAM_ID)]
+    pub permission_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct DelegatePaymentPermission<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub sender: Signer<'info>,
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
+    pub config: Account<'info, Config>,
+    #[account(
+        seeds = [PAYMENT_SEED, payment.payment_id.as_ref()],
+        bump = payment.bump,
+        constraint = payment.sender == sender.key() @ ProtectedPayError::Unauthorized,
+        constraint = !payment.initialized @ ProtectedPayError::PaymentAlreadyOpen,
+    )]
+    pub payment: Account<'info, Payment>,
+    /// CHECK: Address is derived from the protected Payment.
+    #[account(mut, address = Permission::find_pda(&payment.key()).0)]
+    pub permission: UncheckedAccount<'info>,
+    /// CHECK: Fixed to MagicBlock's Permission Program ID.
+    #[account(address = PERMISSION_PROGRAM_ID)]
+    pub permission_program: UncheckedAccount<'info>,
+    /// CHECK: The Permission Program validates this delegation buffer PDA.
+    #[account(
+        mut,
+        address = ephemeral_rollups_sdk::pda::delegate_buffer_pda_from_delegated_account_and_owner_program(
+            &permission.key(),
+            &PERMISSION_PROGRAM_ID,
+        ),
+    )]
+    pub delegation_buffer: UncheckedAccount<'info>,
+    /// CHECK: The Delegation Program validates this record PDA.
+    #[account(
+        mut,
+        address = ephemeral_rollups_sdk::pda::delegation_record_pda_from_delegated_account(
+            &permission.key(),
+        ),
+    )]
+    pub delegation_record: UncheckedAccount<'info>,
+    /// CHECK: The Delegation Program validates this metadata PDA.
+    #[account(
+        mut,
+        address = ephemeral_rollups_sdk::pda::delegation_metadata_pda_from_delegated_account(
+            &permission.key(),
+        ),
+    )]
+    pub delegation_metadata: UncheckedAccount<'info>,
+    /// CHECK: Fixed to MagicBlock's Delegation Program ID.
+    #[account(address = ephemeral_rollups_sdk::id())]
+    pub delegation_program: UncheckedAccount<'info>,
+    /// CHECK: Fixed by Config so all protected accounts use the same Private ER.
+    #[account(address = config.private_validator @ ProtectedPayError::WrongValidator)]
+    pub validator: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[delegate]
+#[derive(Accounts)]
+#[instruction(payment_id: [u8; 32])]
+pub struct DelegatePayment<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub sender: Signer<'info>,
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
+    pub config: Account<'info, Config>,
+    /// CHECK: Fixed by Config to the selected Private ER validator.
+    #[account(address = config.private_validator @ ProtectedPayError::WrongValidator)]
+    pub validator: UncheckedAccount<'info>,
+    /// CHECK: The handler deserializes this account and verifies shell authority;
+    /// the delegate macro validates the PDA and owner before its CPI.
+    #[account(
+        mut,
+        del,
+        seeds = [PAYMENT_SEED, payment_id.as_ref()],
+        bump,
+    )]
+    pub payment: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(payment_id: [u8; 32])]
+pub struct OpenPayment<'info> {
+    pub sender: Signer<'info>,
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
+    pub config: Account<'info, Config>,
+    #[account(
+        mut,
+        seeds = [PAYMENT_SEED, payment_id.as_ref()],
+        bump = payment.bump,
+        constraint = payment.payment_id == payment_id @ ProtectedPayError::InvalidPaymentShell,
+        constraint = payment.sender == sender.key() @ ProtectedPayError::Unauthorized,
+        constraint = payment.token_mint == config.allowed_mint @ ProtectedPayError::WrongMint,
+    )]
+    pub payment: Account<'info, Payment>,
+    #[account(
+        mut,
+        seeds = [
+            DEPOSIT_SEED,
+            sender.key().as_ref(),
+            payment.token_mint.as_ref(),
+        ],
+        bump,
+        constraint = sender_deposit.user == sender.key() @ ProtectedPayError::Unauthorized,
+        constraint = sender_deposit.token_mint == payment.token_mint @ ProtectedPayError::WrongMint,
+    )]
+    pub sender_deposit: Account<'info, Deposit>,
+}
+
+#[derive(Accounts)]
+pub struct AcknowledgePayment<'info> {
+    pub recipient: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [PAYMENT_SEED, payment.payment_id.as_ref()],
+        bump = payment.bump,
+        constraint = payment.recipient == recipient.key() @ ProtectedPayError::Unauthorized,
+    )]
+    pub payment: Account<'info, Payment>,
+}
+
+#[derive(Accounts)]
+pub struct CancelPayment<'info> {
+    pub sender: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [PAYMENT_SEED, payment.payment_id.as_ref()],
+        bump = payment.bump,
+        constraint = payment.sender == sender.key() @ ProtectedPayError::Unauthorized,
+    )]
+    pub payment: Account<'info, Payment>,
+    #[account(
+        mut,
+        seeds = [
+            DEPOSIT_SEED,
+            payment.sender.as_ref(),
+            payment.token_mint.as_ref(),
+        ],
+        bump,
+        constraint = sender_deposit.user == payment.sender @ ProtectedPayError::PaymentDepositMismatch,
+        constraint = sender_deposit.token_mint == payment.token_mint @ ProtectedPayError::WrongMint,
+    )]
+    pub sender_deposit: Account<'info, Deposit>,
+}
+
+#[derive(Accounts)]
+pub struct AdvancePayment<'info> {
+    #[account(
+        mut,
+        seeds = [PAYMENT_SEED, payment.payment_id.as_ref()],
+        bump = payment.bump,
+    )]
+    pub payment: Account<'info, Payment>,
+    #[account(
+        mut,
+        seeds = [
+            DEPOSIT_SEED,
+            payment.sender.as_ref(),
+            payment.token_mint.as_ref(),
+        ],
+        bump,
+        constraint = sender_deposit.user == payment.sender @ ProtectedPayError::PaymentDepositMismatch,
+        constraint = sender_deposit.token_mint == payment.token_mint @ ProtectedPayError::WrongMint,
+    )]
+    pub sender_deposit: Account<'info, Deposit>,
+    #[account(
+        mut,
+        seeds = [
+            DEPOSIT_SEED,
+            payment.recipient.as_ref(),
+            payment.token_mint.as_ref(),
+        ],
+        bump,
+        constraint = recipient_deposit.user == payment.recipient @ ProtectedPayError::PaymentDepositMismatch,
+        constraint = recipient_deposit.token_mint == payment.token_mint @ ProtectedPayError::WrongMint,
+    )]
+    pub recipient_deposit: Account<'info, Deposit>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
+pub struct SchedulePaymentArgs {
+    pub task_id: i64,
+    pub execution_interval_millis: i64,
+    pub iterations: i64,
+}
+
+#[derive(Accounts)]
+#[instruction(payment_id: [u8; 32])]
+pub struct SchedulePayment<'info> {
+    /// CHECK: Fixed to MagicBlock's scheduling program used by the pinned SDK.
+    #[account(address = ephemeral_rollups_sdk::consts::MAGIC_PROGRAM_ID)]
+    pub magic_program: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: Deserialized and relationship-checked before the scheduler CPI.
+    #[account(mut, seeds = [PAYMENT_SEED, payment_id.as_ref()], bump)]
+    pub payment: UncheckedAccount<'info>,
+    /// CHECK: Exact PDA, owner, and fields are checked before the scheduler CPI.
+    #[account(mut)]
+    pub sender_deposit: UncheckedAccount<'info>,
+    /// CHECK: Exact PDA, owner, and fields are checked before the scheduler CPI.
+    #[account(mut)]
+    pub recipient_deposit: UncheckedAccount<'info>,
+    /// CHECK: The scheduled instruction must target this deployed program.
+    #[account(address = crate::ID)]
+    pub program: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct RedactTerminalPayment<'info> {
+    pub sender: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [PAYMENT_SEED, payment.payment_id.as_ref()],
+        bump = payment.bump,
+        constraint = payment.sender == sender.key() @ ProtectedPayError::Unauthorized,
+    )]
+    pub payment: Account<'info, Payment>,
+}
+
+#[commit]
+#[derive(Accounts)]
+pub struct CommitAndUndelegatePayment<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub sender: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [PAYMENT_SEED, payment.payment_id.as_ref()],
+        bump = payment.bump,
+        constraint = payment.sender == sender.key() @ ProtectedPayError::Unauthorized,
+        constraint = payment.redacted @ ProtectedPayError::NotRedacted,
+    )]
+    pub payment: Account<'info, Payment>,
 }
 
 #[derive(Accounts)]
@@ -871,12 +1449,296 @@ pub struct Config {
     pub bump: u8,
 }
 
+impl Config {
+    pub fn update_timing_policy(
+        &mut self,
+        safety_window_seconds: i64,
+        claim_window_seconds: i64,
+    ) -> Result<()> {
+        require!(safety_window_seconds > 0, ProtectedPayError::InvalidWindow);
+        require!(
+            claim_window_seconds > safety_window_seconds,
+            ProtectedPayError::InvalidWindow
+        );
+        self.safety_window_seconds = safety_window_seconds;
+        self.claim_window_seconds = claim_window_seconds;
+        Ok(())
+    }
+}
+
 #[account]
 #[derive(InitSpace)]
 pub struct Vault {
     pub token_mint: Pubkey,
     pub total_liability: u64,
     pub bump: u8,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace, Debug, PartialEq, Eq)]
+pub enum PaymentStatus {
+    Created,
+    Acknowledged,
+    Settled,
+    Cancelled,
+    Expired,
+}
+
+impl PaymentStatus {
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::Settled | Self::Cancelled | Self::Expired)
+    }
+
+    fn commitment_tag(self) -> u8 {
+        match self {
+            Self::Created => 0,
+            Self::Acknowledged => 1,
+            Self::Settled => 2,
+            Self::Cancelled => 3,
+            Self::Expired => 4,
+        }
+    }
+}
+
+#[account]
+#[derive(InitSpace, Debug, PartialEq, Eq)]
+pub struct Payment {
+    pub payment_id: [u8; 32],
+    pub sender: Pubkey,
+    pub recipient: Pubkey,
+    pub token_mint: Pubkey,
+    pub amount: u64,
+    pub created_at: i64,
+    pub settle_after: i64,
+    pub expires_at: i64,
+    pub task_id: i64,
+    pub status: PaymentStatus,
+    pub memo_hash: [u8; 32],
+    pub terminal_commitment: [u8; 32],
+    pub initialized: bool,
+    pub redacted: bool,
+    pub version: u8,
+    pub bump: u8,
+}
+
+impl Payment {
+    #[allow(clippy::too_many_arguments)]
+    pub fn open(
+        &mut self,
+        sender_deposit: &mut Deposit,
+        actor: Pubkey,
+        amount: u64,
+        memo_hash: [u8; 32],
+        now: i64,
+        safety_window_seconds: i64,
+        claim_window_seconds: i64,
+    ) -> Result<()> {
+        require!(!self.initialized, ProtectedPayError::PaymentAlreadyOpen);
+        require!(!self.redacted, ProtectedPayError::InvalidPaymentShell);
+        require_keys_eq!(self.sender, actor, ProtectedPayError::Unauthorized);
+        require_keys_neq!(self.sender, self.recipient, ProtectedPayError::SameParty);
+        self.validate_sender_deposit(sender_deposit)?;
+        require!(amount > 0, ProtectedPayError::InvalidAmount);
+        require!(
+            safety_window_seconds > 0 && claim_window_seconds > safety_window_seconds,
+            ProtectedPayError::InvalidWindow
+        );
+
+        let settle_after = now
+            .checked_add(safety_window_seconds)
+            .ok_or_else(|| error!(ProtectedPayError::MathOverflow))?;
+        let expires_at = now
+            .checked_add(claim_window_seconds)
+            .ok_or_else(|| error!(ProtectedPayError::MathOverflow))?;
+        let next_payment_nonce = sender_deposit
+            .next_payment_nonce
+            .checked_add(1)
+            .ok_or_else(|| error!(ProtectedPayError::MathOverflow))?;
+
+        sender_deposit.lock(amount)?;
+        sender_deposit.next_payment_nonce = next_payment_nonce;
+        self.amount = amount;
+        self.created_at = now;
+        self.settle_after = settle_after;
+        self.expires_at = expires_at;
+        self.task_id = 0;
+        self.status = PaymentStatus::Created;
+        self.memo_hash = memo_hash;
+        self.terminal_commitment = [0; 32];
+        self.initialized = true;
+        Ok(())
+    }
+
+    pub fn acknowledge(&mut self, actor: Pubkey, now: i64) -> Result<()> {
+        require!(self.initialized, ProtectedPayError::PaymentNotOpen);
+        require!(!self.redacted, ProtectedPayError::PaymentRedacted);
+        require_keys_eq!(self.recipient, actor, ProtectedPayError::Unauthorized);
+        require!(
+            self.status == PaymentStatus::Created,
+            ProtectedPayError::InvalidPaymentStatus
+        );
+        require!(now < self.expires_at, ProtectedPayError::PaymentExpired);
+        self.status = PaymentStatus::Acknowledged;
+        Ok(())
+    }
+
+    pub fn cancel(&mut self, sender_deposit: &mut Deposit, actor: Pubkey) -> Result<()> {
+        require!(self.initialized, ProtectedPayError::PaymentNotOpen);
+        require!(!self.redacted, ProtectedPayError::PaymentRedacted);
+        require!(
+            !self.status.is_terminal(),
+            ProtectedPayError::InvalidPaymentStatus
+        );
+        require_keys_eq!(self.sender, actor, ProtectedPayError::Unauthorized);
+        self.validate_sender_deposit(sender_deposit)?;
+        require!(
+            matches!(
+                self.status,
+                PaymentStatus::Created | PaymentStatus::Acknowledged
+            ),
+            ProtectedPayError::InvalidPaymentStatus
+        );
+
+        sender_deposit.unlock(self.amount)?;
+        self.status = PaymentStatus::Cancelled;
+        Ok(())
+    }
+
+    pub fn advance(
+        &mut self,
+        sender_deposit: &mut Deposit,
+        recipient_deposit: &mut Deposit,
+        now: i64,
+    ) -> Result<()> {
+        require!(self.initialized, ProtectedPayError::PaymentNotOpen);
+        require!(!self.redacted, ProtectedPayError::PaymentRedacted);
+        self.validate_sender_deposit(sender_deposit)?;
+        self.validate_recipient_deposit(recipient_deposit)?;
+
+        if self.status.is_terminal() {
+            return Ok(());
+        }
+
+        match self.status {
+            PaymentStatus::Acknowledged if now >= self.settle_after => {
+                sender_deposit.settle_locked_to(recipient_deposit, self.amount)?;
+                self.status = PaymentStatus::Settled;
+            }
+            PaymentStatus::Created if now >= self.expires_at => {
+                sender_deposit.unlock(self.amount)?;
+                self.status = PaymentStatus::Expired;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub fn validate_schedule_accounts(
+        &self,
+        actor: Pubkey,
+        sender_deposit: Pubkey,
+        recipient_deposit: Pubkey,
+    ) -> Result<()> {
+        require!(self.initialized, ProtectedPayError::PaymentNotOpen);
+        require!(!self.redacted, ProtectedPayError::PaymentRedacted);
+        require!(
+            !self.status.is_terminal(),
+            ProtectedPayError::InvalidPaymentStatus
+        );
+        require_keys_eq!(self.sender, actor, ProtectedPayError::Unauthorized);
+        let expected_sender = Pubkey::find_program_address(
+            &[DEPOSIT_SEED, self.sender.as_ref(), self.token_mint.as_ref()],
+            &crate::ID,
+        )
+        .0;
+        let expected_recipient = Pubkey::find_program_address(
+            &[
+                DEPOSIT_SEED,
+                self.recipient.as_ref(),
+                self.token_mint.as_ref(),
+            ],
+            &crate::ID,
+        )
+        .0;
+        require_keys_eq!(
+            expected_sender,
+            sender_deposit,
+            ProtectedPayError::PaymentDepositMismatch
+        );
+        require_keys_eq!(
+            expected_recipient,
+            recipient_deposit,
+            ProtectedPayError::PaymentDepositMismatch
+        );
+        Ok(())
+    }
+
+    pub fn redact(&mut self) -> Result<()> {
+        require!(self.initialized, ProtectedPayError::PaymentNotOpen);
+        require!(
+            self.status.is_terminal(),
+            ProtectedPayError::PaymentNotTerminal
+        );
+        if self.redacted {
+            return Ok(());
+        }
+
+        let amount = self.amount.to_le_bytes();
+        let created_at = self.created_at.to_le_bytes();
+        let settle_after = self.settle_after.to_le_bytes();
+        let expires_at = self.expires_at.to_le_bytes();
+        let status = [self.status.commitment_tag()];
+        self.terminal_commitment = hashv(&[
+            self.payment_id.as_ref(),
+            self.sender.as_ref(),
+            self.recipient.as_ref(),
+            self.token_mint.as_ref(),
+            amount.as_ref(),
+            created_at.as_ref(),
+            settle_after.as_ref(),
+            expires_at.as_ref(),
+            status.as_ref(),
+            self.memo_hash.as_ref(),
+        ])
+        .to_bytes();
+
+        self.recipient = Pubkey::default();
+        self.amount = 0;
+        self.created_at = 0;
+        self.settle_after = 0;
+        self.expires_at = 0;
+        self.task_id = 0;
+        self.memo_hash = [0; 32];
+        self.redacted = true;
+        Ok(())
+    }
+
+    fn validate_sender_deposit(&self, deposit: &Deposit) -> Result<()> {
+        require_keys_eq!(
+            deposit.user,
+            self.sender,
+            ProtectedPayError::PaymentDepositMismatch
+        );
+        require_keys_eq!(
+            deposit.token_mint,
+            self.token_mint,
+            ProtectedPayError::WrongMint
+        );
+        Ok(())
+    }
+
+    fn validate_recipient_deposit(&self, deposit: &Deposit) -> Result<()> {
+        require_keys_eq!(
+            deposit.user,
+            self.recipient,
+            ProtectedPayError::PaymentDepositMismatch
+        );
+        require_keys_eq!(
+            deposit.token_mint,
+            self.token_mint,
+            ProtectedPayError::WrongMint
+        );
+        Ok(())
+    }
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace, Debug, PartialEq, Eq)]
@@ -1040,6 +1902,28 @@ impl Deposit {
         self.available = available;
         Ok(())
     }
+
+    pub fn settle_locked_to(&mut self, recipient: &mut Deposit, amount: u64) -> Result<()> {
+        require!(amount > 0, ProtectedPayError::InvalidAmount);
+        require_keys_eq!(
+            self.token_mint,
+            recipient.token_mint,
+            ProtectedPayError::WrongMint
+        );
+        require_keys_neq!(self.user, recipient.user, ProtectedPayError::SameParty);
+
+        let sender_locked = self
+            .locked
+            .checked_sub(amount)
+            .ok_or_else(|| error!(ProtectedPayError::InsufficientLocked))?;
+        let recipient_available = recipient
+            .available
+            .checked_add(amount)
+            .ok_or_else(|| error!(ProtectedPayError::MathOverflow))?;
+        self.locked = sender_locked;
+        recipient.available = recipient_available;
+        Ok(())
+    }
 }
 
 #[error_code]
@@ -1072,6 +1956,32 @@ pub enum ProtectedPayError {
     AutomationTooEarly,
     #[msg("CrankProbe Deposit mismatch")]
     ProbeDepositMismatch,
+    #[msg("Sender and recipient must differ")]
+    SameParty,
+    #[msg("Payment shell is invalid")]
+    InvalidPaymentShell,
+    #[msg("Payment is already open")]
+    PaymentAlreadyOpen,
+    #[msg("Payment has not been opened")]
+    PaymentNotOpen,
+    #[msg("Payment state does not allow this transition")]
+    InvalidPaymentStatus,
+    #[msg("Payment acknowledgement window has ended")]
+    PaymentExpired,
+    #[msg("Payment Deposit relationship is invalid")]
+    PaymentDepositMismatch,
+    #[msg("Payment must be terminal before redaction")]
+    PaymentNotTerminal,
+    #[msg("Payment has been redacted")]
+    PaymentRedacted,
+    #[msg("Payment must be redacted before public commitment")]
+    NotRedacted,
+    #[msg("A Crank task is already registered for this payment")]
+    TaskAlreadyScheduled,
+    #[msg("Account is not owned by Protected Pay")]
+    InvalidAccountOwner,
+    #[msg("Recipient address is invalid")]
+    InvalidRecipient,
 }
 
 #[cfg(test)]
@@ -1109,6 +2019,360 @@ mod tests {
             version: 1,
             bump: 254,
         }
+    }
+
+    fn payment_fixture(sender_available: u64) -> (Payment, Deposit, Deposit) {
+        let sender = Pubkey::new_unique();
+        let recipient = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let payment = Payment {
+            payment_id: [7; 32],
+            sender,
+            recipient,
+            token_mint: mint,
+            amount: 0,
+            created_at: 0,
+            settle_after: 0,
+            expires_at: 0,
+            task_id: 0,
+            status: PaymentStatus::Created,
+            memo_hash: [0; 32],
+            terminal_commitment: [0; 32],
+            initialized: false,
+            redacted: false,
+            version: 1,
+            bump: 253,
+        };
+        let sender_deposit = Deposit {
+            user: sender,
+            token_mint: mint,
+            available: sender_available,
+            locked: 0,
+            next_payment_nonce: 0,
+            automation_paused: false,
+            version: 1,
+        };
+        let recipient_deposit = Deposit {
+            user: recipient,
+            token_mint: mint,
+            available: 0,
+            locked: 0,
+            next_payment_nonce: 0,
+            automation_paused: false,
+            version: 1,
+        };
+        (payment, sender_deposit, recipient_deposit)
+    }
+
+    fn combined_liability(sender: &Deposit, recipient: &Deposit) -> u64 {
+        sender.total_liability().unwrap() + recipient.total_liability().unwrap()
+    }
+
+    #[test]
+    fn timing_policy_updates_only_with_valid_ordered_windows() {
+        let mut config = Config {
+            authority: Pubkey::new_unique(),
+            allowed_mint: Pubkey::new_unique(),
+            token_program: anchor_spl::token::ID,
+            safety_window_seconds: 300,
+            claim_window_seconds: 86_400,
+            private_validator: Pubkey::new_unique(),
+            version: 1,
+            bump: 255,
+        };
+        config.update_timing_policy(60, 300).unwrap();
+        assert_eq!(config.safety_window_seconds, 60);
+        assert_eq!(config.claim_window_seconds, 300);
+
+        assert!(config.update_timing_policy(0, 300).is_err());
+        assert!(config.update_timing_policy(300, 300).is_err());
+        assert_eq!(config.safety_window_seconds, 60);
+        assert_eq!(config.claim_window_seconds, 300);
+    }
+
+    #[test]
+    fn opening_locks_exact_amount_and_copies_immutable_terms() {
+        let (mut payment, mut sender, _) = payment_fixture(10_000_000);
+        let actor = payment.sender;
+        let memo_hash = [9; 32];
+
+        payment
+            .open(&mut sender, actor, 3_000_000, memo_hash, 100, 60, 300)
+            .unwrap();
+
+        assert_eq!(sender.available, 7_000_000);
+        assert_eq!(sender.locked, 3_000_000);
+        assert_eq!(sender.next_payment_nonce, 1);
+        assert_eq!(payment.amount, 3_000_000);
+        assert_eq!(payment.created_at, 100);
+        assert_eq!(payment.settle_after, 160);
+        assert_eq!(payment.expires_at, 400);
+        assert_eq!(payment.memo_hash, memo_hash);
+        assert_eq!(payment.status, PaymentStatus::Created);
+
+        assert!(payment
+            .open(&mut sender, actor, 1, [1; 32], 101, 60, 300)
+            .is_err());
+        assert_eq!(sender.available, 7_000_000);
+        assert_eq!(sender.locked, 3_000_000);
+        assert_eq!(payment.amount, 3_000_000);
+    }
+
+    #[test]
+    fn acknowledged_payment_settles_once_after_safety_window() {
+        let (mut payment, mut sender, mut recipient) = payment_fixture(8_000_000);
+        let sender_actor = payment.sender;
+        let recipient_actor = payment.recipient;
+        let initial_liability = combined_liability(&sender, &recipient);
+        payment
+            .open(
+                &mut sender,
+                sender_actor,
+                2_500_000,
+                [3; 32],
+                1_000,
+                60,
+                300,
+            )
+            .unwrap();
+        payment.acknowledge(recipient_actor, 1_010).unwrap();
+
+        payment.advance(&mut sender, &mut recipient, 1_059).unwrap();
+        assert_eq!(payment.status, PaymentStatus::Acknowledged);
+        assert_eq!(recipient.available, 0);
+
+        payment.advance(&mut sender, &mut recipient, 1_060).unwrap();
+        assert_eq!(payment.status, PaymentStatus::Settled);
+        assert_eq!(sender.available, 5_500_000);
+        assert_eq!(sender.locked, 0);
+        assert_eq!(recipient.available, 2_500_000);
+        assert_eq!(combined_liability(&sender, &recipient), initial_liability);
+
+        payment.advance(&mut sender, &mut recipient, 9_999).unwrap();
+        assert_eq!(recipient.available, 2_500_000);
+        assert_eq!(combined_liability(&sender, &recipient), initial_liability);
+    }
+
+    #[test]
+    fn sender_can_cancel_and_later_crank_calls_are_noops() {
+        let (mut payment, mut sender, mut recipient) = payment_fixture(4_000_000);
+        let actor = payment.sender;
+        payment
+            .open(&mut sender, actor, 1_250_000, [4; 32], 20, 60, 300)
+            .unwrap();
+        payment.cancel(&mut sender, actor).unwrap();
+        assert_eq!(payment.status, PaymentStatus::Cancelled);
+        assert_eq!(sender.available, 4_000_000);
+        assert_eq!(sender.locked, 0);
+
+        assert!(payment.cancel(&mut sender, actor).is_err());
+        payment.advance(&mut sender, &mut recipient, 1_000).unwrap();
+        assert_eq!(sender.available, 4_000_000);
+        assert_eq!(recipient.available, 0);
+    }
+
+    #[test]
+    fn unacknowledged_payment_expires_at_exact_boundary() {
+        let (mut payment, mut sender, mut recipient) = payment_fixture(5_000_000);
+        let sender_actor = payment.sender;
+        let recipient_actor = payment.recipient;
+        payment
+            .open(&mut sender, sender_actor, 2_000_000, [5; 32], 100, 60, 300)
+            .unwrap();
+
+        payment.advance(&mut sender, &mut recipient, 399).unwrap();
+        assert_eq!(payment.status, PaymentStatus::Created);
+        assert!(payment.acknowledge(recipient_actor, 400).is_err());
+        payment.advance(&mut sender, &mut recipient, 400).unwrap();
+        assert_eq!(payment.status, PaymentStatus::Expired);
+        assert_eq!(sender.available, 5_000_000);
+        assert_eq!(sender.locked, 0);
+        assert_eq!(recipient.available, 0);
+    }
+
+    #[test]
+    fn authorization_and_deposit_substitution_fail_without_mutation() {
+        let (mut payment, mut sender, mut recipient) = payment_fixture(6_000_000);
+        let sender_actor = payment.sender;
+        let recipient_actor = payment.recipient;
+        payment
+            .open(&mut sender, sender_actor, 1_000_000, [6; 32], 0, 60, 300)
+            .unwrap();
+
+        assert!(payment.acknowledge(Pubkey::new_unique(), 1).is_err());
+        assert!(payment.cancel(&mut sender, Pubkey::new_unique()).is_err());
+        assert_eq!(payment.status, PaymentStatus::Created);
+        assert_eq!(sender.available, 5_000_000);
+        assert_eq!(sender.locked, 1_000_000);
+
+        payment.acknowledge(recipient_actor, 1).unwrap();
+        recipient.user = Pubkey::new_unique();
+        assert!(payment.advance(&mut sender, &mut recipient, 60).is_err());
+        assert_eq!(payment.status, PaymentStatus::Acknowledged);
+        assert_eq!(sender.locked, 1_000_000);
+        assert_eq!(recipient.available, 0);
+    }
+
+    #[test]
+    fn cancel_and_settle_races_have_only_one_winner() {
+        let (mut settled, mut sender_a, mut recipient_a) = payment_fixture(3_000_000);
+        let settled_sender = settled.sender;
+        let settled_recipient = settled.recipient;
+        settled
+            .open(
+                &mut sender_a,
+                settled_sender,
+                1_000_000,
+                [1; 32],
+                0,
+                60,
+                300,
+            )
+            .unwrap();
+        settled.acknowledge(settled_recipient, 1).unwrap();
+        settled
+            .advance(&mut sender_a, &mut recipient_a, 60)
+            .unwrap();
+        assert!(settled.cancel(&mut sender_a, settled_sender).is_err());
+        assert_eq!(recipient_a.available, 1_000_000);
+
+        let (mut cancelled, mut sender_b, mut recipient_b) = payment_fixture(3_000_000);
+        let cancelled_sender = cancelled.sender;
+        let cancelled_recipient = cancelled.recipient;
+        cancelled
+            .open(
+                &mut sender_b,
+                cancelled_sender,
+                1_000_000,
+                [2; 32],
+                0,
+                60,
+                300,
+            )
+            .unwrap();
+        cancelled.acknowledge(cancelled_recipient, 1).unwrap();
+        cancelled.cancel(&mut sender_b, cancelled_sender).unwrap();
+        cancelled
+            .advance(&mut sender_b, &mut recipient_b, 60)
+            .unwrap();
+        assert_eq!(cancelled.status, PaymentStatus::Cancelled);
+        assert_eq!(sender_b.available, 3_000_000);
+        assert_eq!(recipient_b.available, 0);
+    }
+
+    #[test]
+    fn settlement_overflow_is_atomic() {
+        let (mut payment, mut sender, mut recipient) = payment_fixture(2);
+        let sender_actor = payment.sender;
+        let recipient_actor = payment.recipient;
+        recipient.available = u64::MAX;
+        payment
+            .open(&mut sender, sender_actor, 1, [8; 32], 0, 1, 2)
+            .unwrap();
+        payment.acknowledge(recipient_actor, 0).unwrap();
+
+        assert!(payment.advance(&mut sender, &mut recipient, 1).is_err());
+        assert_eq!(payment.status, PaymentStatus::Acknowledged);
+        assert_eq!(sender.available, 1);
+        assert_eq!(sender.locked, 1);
+        assert_eq!(recipient.available, u64::MAX);
+    }
+
+    #[test]
+    fn terminal_redaction_is_required_shape_and_idempotent() {
+        let (mut payment, mut sender, mut recipient) = payment_fixture(2_000_000);
+        let sender_actor = payment.sender;
+        let original_recipient = payment.recipient;
+        payment
+            .open(&mut sender, sender_actor, 500_000, [11; 32], 1_000, 60, 300)
+            .unwrap();
+        assert!(payment.redact().is_err());
+        payment.acknowledge(original_recipient, 1_001).unwrap();
+        payment.advance(&mut sender, &mut recipient, 1_060).unwrap();
+        payment.redact().unwrap();
+
+        let commitment = payment.terminal_commitment;
+        assert_ne!(commitment, [0; 32]);
+        assert_eq!(payment.sender, sender_actor);
+        assert_eq!(payment.recipient, Pubkey::default());
+        assert_eq!(payment.amount, 0);
+        assert_eq!(payment.memo_hash, [0; 32]);
+        assert_eq!(payment.created_at, 0);
+        assert_eq!(payment.settle_after, 0);
+        assert_eq!(payment.expires_at, 0);
+        assert!(payment.redacted);
+
+        payment.redact().unwrap();
+        assert_eq!(payment.terminal_commitment, commitment);
+    }
+
+    #[test]
+    fn invalid_open_terms_do_not_mutate_payment_or_balance() {
+        let (mut payment, mut sender, _) = payment_fixture(1_000_000);
+        let actor = payment.sender;
+
+        assert!(payment
+            .open(&mut sender, actor, 0, [0; 32], 10, 60, 300)
+            .is_err());
+        assert!(!payment.initialized);
+        assert_eq!(sender.available, 1_000_000);
+        assert_eq!(sender.locked, 0);
+
+        payment.recipient = actor;
+        assert!(payment
+            .open(&mut sender, actor, 1, [0; 32], 10, 60, 300)
+            .is_err());
+        assert!(!payment.initialized);
+
+        payment.recipient = Pubkey::new_unique();
+        assert!(payment
+            .open(&mut sender, actor, 1, [0; 32], i64::MAX, 60, 300)
+            .is_err());
+        assert!(!payment.initialized);
+        assert_eq!(sender.available, 1_000_000);
+        assert_eq!(sender.next_payment_nonce, 0);
+    }
+
+    #[test]
+    fn crank_schedule_can_only_bind_stored_parties_and_deposits() {
+        let (mut payment, mut sender, _) = payment_fixture(1_000_000);
+        let actor = payment.sender;
+        payment
+            .open(&mut sender, actor, 1, [0; 32], 0, 60, 300)
+            .unwrap();
+        let sender_pda = Pubkey::find_program_address(
+            &[
+                DEPOSIT_SEED,
+                payment.sender.as_ref(),
+                payment.token_mint.as_ref(),
+            ],
+            &crate::ID,
+        )
+        .0;
+        let recipient_pda = Pubkey::find_program_address(
+            &[
+                DEPOSIT_SEED,
+                payment.recipient.as_ref(),
+                payment.token_mint.as_ref(),
+            ],
+            &crate::ID,
+        )
+        .0;
+
+        payment
+            .validate_schedule_accounts(actor, sender_pda, recipient_pda)
+            .unwrap();
+        assert!(payment
+            .validate_schedule_accounts(Pubkey::new_unique(), sender_pda, recipient_pda)
+            .is_err());
+        assert!(payment
+            .validate_schedule_accounts(actor, Pubkey::new_unique(), recipient_pda)
+            .is_err());
+
+        payment.status = PaymentStatus::Cancelled;
+        assert!(payment
+            .validate_schedule_accounts(actor, sender_pda, recipient_pda)
+            .is_err());
     }
 
     #[test]

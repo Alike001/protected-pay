@@ -42,18 +42,57 @@ export const PROTECTED_PAY_ERROR__INVALID_CRANK_SCHEDULE = 0x177b; // 6011
 export const PROTECTED_PAY_ERROR__AUTOMATION_TOO_EARLY = 0x177c; // 6012
 /** ProbeDepositMismatch: CrankProbe Deposit mismatch */
 export const PROTECTED_PAY_ERROR__PROBE_DEPOSIT_MISMATCH = 0x177d; // 6013
+/** SameParty: Sender and recipient must differ */
+export const PROTECTED_PAY_ERROR__SAME_PARTY = 0x177e; // 6014
+/** InvalidPaymentShell: Payment shell is invalid */
+export const PROTECTED_PAY_ERROR__INVALID_PAYMENT_SHELL = 0x177f; // 6015
+/** PaymentAlreadyOpen: Payment is already open */
+export const PROTECTED_PAY_ERROR__PAYMENT_ALREADY_OPEN = 0x1780; // 6016
+/** PaymentNotOpen: Payment has not been opened */
+export const PROTECTED_PAY_ERROR__PAYMENT_NOT_OPEN = 0x1781; // 6017
+/** InvalidPaymentStatus: Payment state does not allow this transition */
+export const PROTECTED_PAY_ERROR__INVALID_PAYMENT_STATUS = 0x1782; // 6018
+/** PaymentExpired: Payment acknowledgement window has ended */
+export const PROTECTED_PAY_ERROR__PAYMENT_EXPIRED = 0x1783; // 6019
+/** PaymentDepositMismatch: Payment Deposit relationship is invalid */
+export const PROTECTED_PAY_ERROR__PAYMENT_DEPOSIT_MISMATCH = 0x1784; // 6020
+/** PaymentNotTerminal: Payment must be terminal before redaction */
+export const PROTECTED_PAY_ERROR__PAYMENT_NOT_TERMINAL = 0x1785; // 6021
+/** PaymentRedacted: Payment has been redacted */
+export const PROTECTED_PAY_ERROR__PAYMENT_REDACTED = 0x1786; // 6022
+/** NotRedacted: Payment must be redacted before public commitment */
+export const PROTECTED_PAY_ERROR__NOT_REDACTED = 0x1787; // 6023
+/** TaskAlreadyScheduled: A Crank task is already registered for this payment */
+export const PROTECTED_PAY_ERROR__TASK_ALREADY_SCHEDULED = 0x1788; // 6024
+/** InvalidAccountOwner: Account is not owned by Protected Pay */
+export const PROTECTED_PAY_ERROR__INVALID_ACCOUNT_OWNER = 0x1789; // 6025
+/** InvalidRecipient: Recipient address is invalid */
+export const PROTECTED_PAY_ERROR__INVALID_RECIPIENT = 0x178a; // 6026
 
 export type ProtectedPayError =
   | typeof PROTECTED_PAY_ERROR__AUTOMATION_TOO_EARLY
   | typeof PROTECTED_PAY_ERROR__INSUFFICIENT_AVAILABLE
   | typeof PROTECTED_PAY_ERROR__INSUFFICIENT_LOCKED
+  | typeof PROTECTED_PAY_ERROR__INVALID_ACCOUNT_OWNER
   | typeof PROTECTED_PAY_ERROR__INVALID_AMOUNT
   | typeof PROTECTED_PAY_ERROR__INVALID_CRANK_SCHEDULE
+  | typeof PROTECTED_PAY_ERROR__INVALID_PAYMENT_SHELL
+  | typeof PROTECTED_PAY_ERROR__INVALID_PAYMENT_STATUS
+  | typeof PROTECTED_PAY_ERROR__INVALID_RECIPIENT
   | typeof PROTECTED_PAY_ERROR__INVALID_VALIDATOR
   | typeof PROTECTED_PAY_ERROR__INVALID_WINDOW
   | typeof PROTECTED_PAY_ERROR__LIABILITY_MISMATCH
   | typeof PROTECTED_PAY_ERROR__MATH_OVERFLOW
+  | typeof PROTECTED_PAY_ERROR__NOT_REDACTED
+  | typeof PROTECTED_PAY_ERROR__PAYMENT_ALREADY_OPEN
+  | typeof PROTECTED_PAY_ERROR__PAYMENT_DEPOSIT_MISMATCH
+  | typeof PROTECTED_PAY_ERROR__PAYMENT_EXPIRED
+  | typeof PROTECTED_PAY_ERROR__PAYMENT_NOT_OPEN
+  | typeof PROTECTED_PAY_ERROR__PAYMENT_NOT_TERMINAL
+  | typeof PROTECTED_PAY_ERROR__PAYMENT_REDACTED
   | typeof PROTECTED_PAY_ERROR__PROBE_DEPOSIT_MISMATCH
+  | typeof PROTECTED_PAY_ERROR__SAME_PARTY
+  | typeof PROTECTED_PAY_ERROR__TASK_ALREADY_SCHEDULED
   | typeof PROTECTED_PAY_ERROR__UNAUTHORIZED
   | typeof PROTECTED_PAY_ERROR__WRONG_MINT
   | typeof PROTECTED_PAY_ERROR__WRONG_TOKEN_PROGRAM
@@ -65,13 +104,26 @@ if (process.env["NODE_ENV"] !== "production") {
     [PROTECTED_PAY_ERROR__AUTOMATION_TOO_EARLY]: `Automation is not due`,
     [PROTECTED_PAY_ERROR__INSUFFICIENT_AVAILABLE]: `Available balance is too low`,
     [PROTECTED_PAY_ERROR__INSUFFICIENT_LOCKED]: `Locked balance is too low`,
+    [PROTECTED_PAY_ERROR__INVALID_ACCOUNT_OWNER]: `Account is not owned by Protected Pay`,
     [PROTECTED_PAY_ERROR__INVALID_AMOUNT]: `Amount must be positive`,
     [PROTECTED_PAY_ERROR__INVALID_CRANK_SCHEDULE]: `Invalid Crank schedule`,
+    [PROTECTED_PAY_ERROR__INVALID_PAYMENT_SHELL]: `Payment shell is invalid`,
+    [PROTECTED_PAY_ERROR__INVALID_PAYMENT_STATUS]: `Payment state does not allow this transition`,
+    [PROTECTED_PAY_ERROR__INVALID_RECIPIENT]: `Recipient address is invalid`,
     [PROTECTED_PAY_ERROR__INVALID_VALIDATOR]: `Invalid Private ER validator`,
     [PROTECTED_PAY_ERROR__INVALID_WINDOW]: `Invalid timing window`,
     [PROTECTED_PAY_ERROR__LIABILITY_MISMATCH]: `Liability mismatch`,
     [PROTECTED_PAY_ERROR__MATH_OVERFLOW]: `Arithmetic overflow`,
+    [PROTECTED_PAY_ERROR__NOT_REDACTED]: `Payment must be redacted before public commitment`,
+    [PROTECTED_PAY_ERROR__PAYMENT_ALREADY_OPEN]: `Payment is already open`,
+    [PROTECTED_PAY_ERROR__PAYMENT_DEPOSIT_MISMATCH]: `Payment Deposit relationship is invalid`,
+    [PROTECTED_PAY_ERROR__PAYMENT_EXPIRED]: `Payment acknowledgement window has ended`,
+    [PROTECTED_PAY_ERROR__PAYMENT_NOT_OPEN]: `Payment has not been opened`,
+    [PROTECTED_PAY_ERROR__PAYMENT_NOT_TERMINAL]: `Payment must be terminal before redaction`,
+    [PROTECTED_PAY_ERROR__PAYMENT_REDACTED]: `Payment has been redacted`,
     [PROTECTED_PAY_ERROR__PROBE_DEPOSIT_MISMATCH]: `CrankProbe Deposit mismatch`,
+    [PROTECTED_PAY_ERROR__SAME_PARTY]: `Sender and recipient must differ`,
+    [PROTECTED_PAY_ERROR__TASK_ALREADY_SCHEDULED]: `A Crank task is already registered for this payment`,
     [PROTECTED_PAY_ERROR__UNAUTHORIZED]: `Unauthorized signer`,
     [PROTECTED_PAY_ERROR__WRONG_MINT]: `Wrong token mint`,
     [PROTECTED_PAY_ERROR__WRONG_TOKEN_PROGRAM]: `Wrong token program`,

@@ -6,20 +6,32 @@
  * @see https://github.com/codama-idl/codama
  */
 
+export * from "./acknowledgePayment";
 export * from "./advanceCrankProbe";
+export * from "./advancePayment";
+export * from "./cancelPayment";
 export * from "./commitAndUndelegateCrankProbe";
 export * from "./commitAndUndelegateDeposit";
+export * from "./commitAndUndelegatePayment";
 export * from "./createCrankProbePermission";
 export * from "./createDepositPermission";
+export * from "./createPaymentPermission";
 export * from "./delegateCrankProbe";
 export * from "./delegateCrankProbePermission";
 export * from "./delegateDeposit";
 export * from "./delegateDepositPermission";
+export * from "./delegatePayment";
+export * from "./delegatePaymentPermission";
 export * from "./depositUsdc";
 export * from "./initializeConfig";
 export * from "./initializeCrankProbe";
 export * from "./initializeDeposit";
 export * from "./initializeVault";
+export * from "./openPayment";
+export * from "./preparePayment";
 export * from "./processUndelegation";
+export * from "./redactTerminalPayment";
 export * from "./scheduleCrankProbe";
+export * from "./schedulePayment";
+export * from "./updateTimingPolicy";
 export * from "./withdrawUsdc";

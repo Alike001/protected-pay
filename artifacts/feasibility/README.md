@@ -6,5 +6,6 @@ This directory records reproducible evidence for Protected Pay's technical go/no
 - `g1-vault-round-trip.md`: real Circle Devnet test-USDC deposit/private mutation/withdrawal
 - `g2-crank-private-state.md`: MagicBlock Crank mutation of permissioned delegated accounts
 - `g3-privacy-audit.md`: observable metadata and committed-state audit
+- `p4-state-machine-local.md`: local full-state-machine verification and live-test boundary
 
 No empty template or mocked transaction is evidence that a gate passed.

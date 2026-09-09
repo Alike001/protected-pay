@@ -25,6 +25,7 @@ anchor-lang = { workspace = true }
 anchor-spl = { workspace = true }
 ephemeral-rollups-sdk = { workspace = true, features = ["anchor"] }
 magicblock-magic-program-api = { workspace = true }
+solana-sha256-hasher = { workspace = true }
 
 [lints.rust.unexpected_cfgs]
 level = "warn"

@@ -12,9 +12,11 @@ The risk-first feasibility phase is complete:
 2. **G2 — Pass:** MagicBlock Crank executed three scheduled private transactions without the user online; the idempotent state transition occurred exactly once and committed back to Solana.
 3. **G3 — Narrow pass:** unauthenticated and unrelated authenticated wallets could not read protected state, but permission membership, delegation metadata, timing, pre-delegation state, and committed terminal state are public.
 
-The project will therefore proceed with the precise claim **“private while pending inside MagicBlock's authenticated Private ER,”** not anonymous or permanently secret payments. The next phase replaces the feasibility `CrankProbe` with the complete protected-payment state machine before any product UI is built.
+The project will therefore proceed with the precise claim **“private while pending inside MagicBlock's authenticated Private ER,”** not anonymous or permanently secret payments.
 
-The current implementation is a deployed technical feasibility spine, not yet the finished hackathon product. It uses only non-value Devnet test assets and is not audited or production-ready.
+Phase 4 now has a locally verified protected-payment state machine: prepare, permission/delegation, private open, recipient acknowledgement, sender cancellation, deterministic settlement/expiry, Crank scheduling, terminal redaction, and commit/undelegation. Its 21 Rust tests, generated IDL/client, TypeScript check, clippy check, and optimized SBF build pass. The next gate is live Private ER/Devnet simulation and proof before UI work.
+
+The deployed Devnet program still contains the earlier feasibility build until an upgrade is separately simulated and approved. The project uses only non-value Devnet test assets and is not audited or production-ready.
 
 ## Source layout
 

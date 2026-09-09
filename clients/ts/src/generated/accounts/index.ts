@@ -9,4 +9,5 @@
 export * from "./config";
 export * from "./crankProbe";
 export * from "./deposit";
+export * from "./payment";
 export * from "./vault";

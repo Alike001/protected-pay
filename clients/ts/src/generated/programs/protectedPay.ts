@@ -38,6 +38,7 @@ import {
   getConfigCodec,
   getCrankProbeCodec,
   getDepositCodec,
+  getPaymentCodec,
   getVaultCodec,
   type Config,
   type ConfigArgs,
@@ -45,91 +46,145 @@ import {
   type CrankProbeArgs,
   type Deposit,
   type DepositArgs,
+  type Payment,
+  type PaymentArgs,
   type Vault,
   type VaultArgs,
 } from "../accounts";
 import {
+  getAcknowledgePaymentInstruction,
   getAdvanceCrankProbeInstruction,
+  getAdvancePaymentInstruction,
+  getCancelPaymentInstruction,
   getCommitAndUndelegateCrankProbeInstructionAsync,
   getCommitAndUndelegateDepositInstruction,
+  getCommitAndUndelegatePaymentInstruction,
   getCreateCrankProbePermissionInstructionAsync,
   getCreateDepositPermissionInstruction,
+  getCreatePaymentPermissionInstruction,
   getDelegateCrankProbeInstructionAsync,
   getDelegateCrankProbePermissionInstructionAsync,
   getDelegateDepositInstructionAsync,
   getDelegateDepositPermissionInstructionAsync,
+  getDelegatePaymentInstructionAsync,
+  getDelegatePaymentPermissionInstructionAsync,
   getDepositUsdcInstructionAsync,
   getInitializeConfigInstructionAsync,
   getInitializeCrankProbeInstructionAsync,
   getInitializeDepositInstructionAsync,
   getInitializeVaultInstructionAsync,
+  getOpenPaymentInstructionAsync,
+  getPreparePaymentInstructionAsync,
   getProcessUndelegationInstruction,
+  getRedactTerminalPaymentInstruction,
   getScheduleCrankProbeInstructionAsync,
+  getSchedulePaymentInstructionAsync,
+  getUpdateTimingPolicyInstructionAsync,
   getWithdrawUsdcInstructionAsync,
+  parseAcknowledgePaymentInstruction,
   parseAdvanceCrankProbeInstruction,
+  parseAdvancePaymentInstruction,
+  parseCancelPaymentInstruction,
   parseCommitAndUndelegateCrankProbeInstruction,
   parseCommitAndUndelegateDepositInstruction,
+  parseCommitAndUndelegatePaymentInstruction,
   parseCreateCrankProbePermissionInstruction,
   parseCreateDepositPermissionInstruction,
+  parseCreatePaymentPermissionInstruction,
   parseDelegateCrankProbeInstruction,
   parseDelegateCrankProbePermissionInstruction,
   parseDelegateDepositInstruction,
   parseDelegateDepositPermissionInstruction,
+  parseDelegatePaymentInstruction,
+  parseDelegatePaymentPermissionInstruction,
   parseDepositUsdcInstruction,
   parseInitializeConfigInstruction,
   parseInitializeCrankProbeInstruction,
   parseInitializeDepositInstruction,
   parseInitializeVaultInstruction,
+  parseOpenPaymentInstruction,
+  parsePreparePaymentInstruction,
   parseProcessUndelegationInstruction,
+  parseRedactTerminalPaymentInstruction,
   parseScheduleCrankProbeInstruction,
+  parseSchedulePaymentInstruction,
+  parseUpdateTimingPolicyInstruction,
   parseWithdrawUsdcInstruction,
+  type AcknowledgePaymentInput,
   type AdvanceCrankProbeInput,
+  type AdvancePaymentInput,
+  type CancelPaymentInput,
   type CommitAndUndelegateCrankProbeAsyncInput,
   type CommitAndUndelegateDepositInput,
+  type CommitAndUndelegatePaymentInput,
   type CreateCrankProbePermissionAsyncInput,
   type CreateDepositPermissionInput,
+  type CreatePaymentPermissionInput,
   type DelegateCrankProbeAsyncInput,
   type DelegateCrankProbePermissionAsyncInput,
   type DelegateDepositAsyncInput,
   type DelegateDepositPermissionAsyncInput,
+  type DelegatePaymentAsyncInput,
+  type DelegatePaymentPermissionAsyncInput,
   type DepositUsdcAsyncInput,
   type InitializeConfigAsyncInput,
   type InitializeCrankProbeAsyncInput,
   type InitializeDepositAsyncInput,
   type InitializeVaultAsyncInput,
+  type OpenPaymentAsyncInput,
+  type ParsedAcknowledgePaymentInstruction,
   type ParsedAdvanceCrankProbeInstruction,
+  type ParsedAdvancePaymentInstruction,
+  type ParsedCancelPaymentInstruction,
   type ParsedCommitAndUndelegateCrankProbeInstruction,
   type ParsedCommitAndUndelegateDepositInstruction,
+  type ParsedCommitAndUndelegatePaymentInstruction,
   type ParsedCreateCrankProbePermissionInstruction,
   type ParsedCreateDepositPermissionInstruction,
+  type ParsedCreatePaymentPermissionInstruction,
   type ParsedDelegateCrankProbeInstruction,
   type ParsedDelegateCrankProbePermissionInstruction,
   type ParsedDelegateDepositInstruction,
   type ParsedDelegateDepositPermissionInstruction,
+  type ParsedDelegatePaymentInstruction,
+  type ParsedDelegatePaymentPermissionInstruction,
   type ParsedDepositUsdcInstruction,
   type ParsedInitializeConfigInstruction,
   type ParsedInitializeCrankProbeInstruction,
   type ParsedInitializeDepositInstruction,
   type ParsedInitializeVaultInstruction,
+  type ParsedOpenPaymentInstruction,
+  type ParsedPreparePaymentInstruction,
   type ParsedProcessUndelegationInstruction,
+  type ParsedRedactTerminalPaymentInstruction,
   type ParsedScheduleCrankProbeInstruction,
+  type ParsedSchedulePaymentInstruction,
+  type ParsedUpdateTimingPolicyInstruction,
   type ParsedWithdrawUsdcInstruction,
+  type PreparePaymentAsyncInput,
   type ProcessUndelegationInput,
+  type RedactTerminalPaymentInput,
   type ScheduleCrankProbeAsyncInput,
+  type SchedulePaymentAsyncInput,
+  type UpdateTimingPolicyAsyncInput,
   type WithdrawUsdcAsyncInput,
 } from "../instructions";
 import {
   findBufferCrankProbePda,
   findBufferDepositPda,
+  findBufferPaymentPda,
   findConfigPda,
   findCrankProbePda,
   findDelegateCrankProbeCrankProbePda,
   findDelegationMetadataCrankProbePda,
   findDelegationMetadataDepositPda,
+  findDelegationMetadataPaymentPda,
   findDelegationRecordCrankProbePda,
   findDelegationRecordDepositPda,
+  findDelegationRecordPaymentPda,
   findDepositPda,
   findInitializeCrankProbeCrankProbePda,
+  findPaymentPda,
   findVaultPda,
 } from "../pdas";
 
@@ -140,6 +195,7 @@ export enum ProtectedPayAccount {
   Config,
   CrankProbe,
   Deposit,
+  Payment,
   Vault,
 }
 
@@ -184,6 +240,17 @@ export function identifyProtectedPayAccount(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([227, 231, 51, 26, 244, 88, 4, 148]),
+      ),
+      0,
+    )
+  ) {
+    return ProtectedPayAccount.Payment;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([211, 8, 232, 43, 2, 152, 117, 119]),
       ),
       0,
@@ -198,22 +265,34 @@ export function identifyProtectedPayAccount(
 }
 
 export enum ProtectedPayInstruction {
+  AcknowledgePayment,
   AdvanceCrankProbe,
+  AdvancePayment,
+  CancelPayment,
   CommitAndUndelegateCrankProbe,
   CommitAndUndelegateDeposit,
+  CommitAndUndelegatePayment,
   CreateCrankProbePermission,
   CreateDepositPermission,
+  CreatePaymentPermission,
   DelegateCrankProbe,
   DelegateCrankProbePermission,
   DelegateDeposit,
   DelegateDepositPermission,
+  DelegatePayment,
+  DelegatePaymentPermission,
   DepositUsdc,
   InitializeConfig,
   InitializeCrankProbe,
   InitializeDeposit,
   InitializeVault,
+  OpenPayment,
+  PreparePayment,
   ProcessUndelegation,
+  RedactTerminalPayment,
   ScheduleCrankProbe,
+  SchedulePayment,
+  UpdateTimingPolicy,
   WithdrawUsdc,
 }
 
@@ -225,12 +304,45 @@ export function identifyProtectedPayInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([229, 32, 12, 195, 108, 142, 169, 102]),
+      ),
+      0,
+    )
+  ) {
+    return ProtectedPayInstruction.AcknowledgePayment;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([252, 244, 86, 174, 23, 24, 79, 123]),
       ),
       0,
     )
   ) {
     return ProtectedPayInstruction.AdvanceCrankProbe;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([86, 128, 207, 250, 75, 222, 207, 242]),
+      ),
+      0,
+    )
+  ) {
+    return ProtectedPayInstruction.AdvancePayment;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([217, 129, 71, 37, 216, 193, 38, 33]),
+      ),
+      0,
+    )
+  ) {
+    return ProtectedPayInstruction.CancelPayment;
   }
   if (
     containsBytes(
@@ -258,6 +370,17 @@ export function identifyProtectedPayInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([79, 200, 243, 136, 201, 145, 215, 213]),
+      ),
+      0,
+    )
+  ) {
+    return ProtectedPayInstruction.CommitAndUndelegatePayment;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([191, 132, 176, 47, 31, 17, 174, 161]),
       ),
       0,
@@ -275,6 +398,17 @@ export function identifyProtectedPayInstruction(
     )
   ) {
     return ProtectedPayInstruction.CreateDepositPermission;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([74, 208, 91, 219, 135, 161, 0, 146]),
+      ),
+      0,
+    )
+  ) {
+    return ProtectedPayInstruction.CreatePaymentPermission;
   }
   if (
     containsBytes(
@@ -319,6 +453,28 @@ export function identifyProtectedPayInstruction(
     )
   ) {
     return ProtectedPayInstruction.DelegateDepositPermission;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([121, 21, 152, 1, 216, 0, 31, 50]),
+      ),
+      0,
+    )
+  ) {
+    return ProtectedPayInstruction.DelegatePayment;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([155, 170, 189, 169, 147, 218, 236, 255]),
+      ),
+      0,
+    )
+  ) {
+    return ProtectedPayInstruction.DelegatePaymentPermission;
   }
   if (
     containsBytes(
@@ -379,6 +535,28 @@ export function identifyProtectedPayInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([20, 58, 244, 67, 239, 237, 69, 17]),
+      ),
+      0,
+    )
+  ) {
+    return ProtectedPayInstruction.OpenPayment;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([216, 180, 241, 36, 108, 90, 166, 23]),
+      ),
+      0,
+    )
+  ) {
+    return ProtectedPayInstruction.PreparePayment;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([196, 28, 41, 206, 48, 37, 51, 167]),
       ),
       0,
@@ -390,12 +568,45 @@ export function identifyProtectedPayInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([27, 147, 68, 32, 195, 51, 127, 216]),
+      ),
+      0,
+    )
+  ) {
+    return ProtectedPayInstruction.RedactTerminalPayment;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([127, 49, 87, 118, 193, 63, 90, 84]),
       ),
       0,
     )
   ) {
     return ProtectedPayInstruction.ScheduleCrankProbe;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([9, 34, 138, 251, 220, 61, 94, 17]),
+      ),
+      0,
+    )
+  ) {
+    return ProtectedPayInstruction.SchedulePayment;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([225, 178, 23, 10, 35, 19, 150, 143]),
+      ),
+      0,
+    )
+  ) {
+    return ProtectedPayInstruction.UpdateTimingPolicy;
   }
   if (
     containsBytes(
@@ -418,8 +629,17 @@ export type ParsedProtectedPayInstruction<
   TProgram extends string = "w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk",
 > =
   | ({
+      instructionType: ProtectedPayInstruction.AcknowledgePayment;
+    } & ParsedAcknowledgePaymentInstruction<TProgram>)
+  | ({
       instructionType: ProtectedPayInstruction.AdvanceCrankProbe;
     } & ParsedAdvanceCrankProbeInstruction<TProgram>)
+  | ({
+      instructionType: ProtectedPayInstruction.AdvancePayment;
+    } & ParsedAdvancePaymentInstruction<TProgram>)
+  | ({
+      instructionType: ProtectedPayInstruction.CancelPayment;
+    } & ParsedCancelPaymentInstruction<TProgram>)
   | ({
       instructionType: ProtectedPayInstruction.CommitAndUndelegateCrankProbe;
     } & ParsedCommitAndUndelegateCrankProbeInstruction<TProgram>)
@@ -427,11 +647,17 @@ export type ParsedProtectedPayInstruction<
       instructionType: ProtectedPayInstruction.CommitAndUndelegateDeposit;
     } & ParsedCommitAndUndelegateDepositInstruction<TProgram>)
   | ({
+      instructionType: ProtectedPayInstruction.CommitAndUndelegatePayment;
+    } & ParsedCommitAndUndelegatePaymentInstruction<TProgram>)
+  | ({
       instructionType: ProtectedPayInstruction.CreateCrankProbePermission;
     } & ParsedCreateCrankProbePermissionInstruction<TProgram>)
   | ({
       instructionType: ProtectedPayInstruction.CreateDepositPermission;
     } & ParsedCreateDepositPermissionInstruction<TProgram>)
+  | ({
+      instructionType: ProtectedPayInstruction.CreatePaymentPermission;
+    } & ParsedCreatePaymentPermissionInstruction<TProgram>)
   | ({
       instructionType: ProtectedPayInstruction.DelegateCrankProbe;
     } & ParsedDelegateCrankProbeInstruction<TProgram>)
@@ -444,6 +670,12 @@ export type ParsedProtectedPayInstruction<
   | ({
       instructionType: ProtectedPayInstruction.DelegateDepositPermission;
     } & ParsedDelegateDepositPermissionInstruction<TProgram>)
+  | ({
+      instructionType: ProtectedPayInstruction.DelegatePayment;
+    } & ParsedDelegatePaymentInstruction<TProgram>)
+  | ({
+      instructionType: ProtectedPayInstruction.DelegatePaymentPermission;
+    } & ParsedDelegatePaymentPermissionInstruction<TProgram>)
   | ({
       instructionType: ProtectedPayInstruction.DepositUsdc;
     } & ParsedDepositUsdcInstruction<TProgram>)
@@ -460,11 +692,26 @@ export type ParsedProtectedPayInstruction<
       instructionType: ProtectedPayInstruction.InitializeVault;
     } & ParsedInitializeVaultInstruction<TProgram>)
   | ({
+      instructionType: ProtectedPayInstruction.OpenPayment;
+    } & ParsedOpenPaymentInstruction<TProgram>)
+  | ({
+      instructionType: ProtectedPayInstruction.PreparePayment;
+    } & ParsedPreparePaymentInstruction<TProgram>)
+  | ({
       instructionType: ProtectedPayInstruction.ProcessUndelegation;
     } & ParsedProcessUndelegationInstruction<TProgram>)
   | ({
+      instructionType: ProtectedPayInstruction.RedactTerminalPayment;
+    } & ParsedRedactTerminalPaymentInstruction<TProgram>)
+  | ({
       instructionType: ProtectedPayInstruction.ScheduleCrankProbe;
     } & ParsedScheduleCrankProbeInstruction<TProgram>)
+  | ({
+      instructionType: ProtectedPayInstruction.SchedulePayment;
+    } & ParsedSchedulePaymentInstruction<TProgram>)
+  | ({
+      instructionType: ProtectedPayInstruction.UpdateTimingPolicy;
+    } & ParsedUpdateTimingPolicyInstruction<TProgram>)
   | ({
       instructionType: ProtectedPayInstruction.WithdrawUsdc;
     } & ParsedWithdrawUsdcInstruction<TProgram>);
@@ -474,11 +721,32 @@ export function parseProtectedPayInstruction<TProgram extends string>(
 ): ParsedProtectedPayInstruction<TProgram> {
   const instructionType = identifyProtectedPayInstruction(instruction);
   switch (instructionType) {
+    case ProtectedPayInstruction.AcknowledgePayment: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ProtectedPayInstruction.AcknowledgePayment,
+        ...parseAcknowledgePaymentInstruction(instruction),
+      };
+    }
     case ProtectedPayInstruction.AdvanceCrankProbe: {
       assertIsInstructionWithAccounts(instruction);
       return {
         instructionType: ProtectedPayInstruction.AdvanceCrankProbe,
         ...parseAdvanceCrankProbeInstruction(instruction),
+      };
+    }
+    case ProtectedPayInstruction.AdvancePayment: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ProtectedPayInstruction.AdvancePayment,
+        ...parseAdvancePaymentInstruction(instruction),
+      };
+    }
+    case ProtectedPayInstruction.CancelPayment: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ProtectedPayInstruction.CancelPayment,
+        ...parseCancelPaymentInstruction(instruction),
       };
     }
     case ProtectedPayInstruction.CommitAndUndelegateCrankProbe: {
@@ -495,6 +763,13 @@ export function parseProtectedPayInstruction<TProgram extends string>(
         ...parseCommitAndUndelegateDepositInstruction(instruction),
       };
     }
+    case ProtectedPayInstruction.CommitAndUndelegatePayment: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ProtectedPayInstruction.CommitAndUndelegatePayment,
+        ...parseCommitAndUndelegatePaymentInstruction(instruction),
+      };
+    }
     case ProtectedPayInstruction.CreateCrankProbePermission: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -507,6 +782,13 @@ export function parseProtectedPayInstruction<TProgram extends string>(
       return {
         instructionType: ProtectedPayInstruction.CreateDepositPermission,
         ...parseCreateDepositPermissionInstruction(instruction),
+      };
+    }
+    case ProtectedPayInstruction.CreatePaymentPermission: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ProtectedPayInstruction.CreatePaymentPermission,
+        ...parseCreatePaymentPermissionInstruction(instruction),
       };
     }
     case ProtectedPayInstruction.DelegateCrankProbe: {
@@ -535,6 +817,20 @@ export function parseProtectedPayInstruction<TProgram extends string>(
       return {
         instructionType: ProtectedPayInstruction.DelegateDepositPermission,
         ...parseDelegateDepositPermissionInstruction(instruction),
+      };
+    }
+    case ProtectedPayInstruction.DelegatePayment: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ProtectedPayInstruction.DelegatePayment,
+        ...parseDelegatePaymentInstruction(instruction),
+      };
+    }
+    case ProtectedPayInstruction.DelegatePaymentPermission: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ProtectedPayInstruction.DelegatePaymentPermission,
+        ...parseDelegatePaymentPermissionInstruction(instruction),
       };
     }
     case ProtectedPayInstruction.DepositUsdc: {
@@ -572,6 +868,20 @@ export function parseProtectedPayInstruction<TProgram extends string>(
         ...parseInitializeVaultInstruction(instruction),
       };
     }
+    case ProtectedPayInstruction.OpenPayment: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ProtectedPayInstruction.OpenPayment,
+        ...parseOpenPaymentInstruction(instruction),
+      };
+    }
+    case ProtectedPayInstruction.PreparePayment: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ProtectedPayInstruction.PreparePayment,
+        ...parsePreparePaymentInstruction(instruction),
+      };
+    }
     case ProtectedPayInstruction.ProcessUndelegation: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -579,11 +889,32 @@ export function parseProtectedPayInstruction<TProgram extends string>(
         ...parseProcessUndelegationInstruction(instruction),
       };
     }
+    case ProtectedPayInstruction.RedactTerminalPayment: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ProtectedPayInstruction.RedactTerminalPayment,
+        ...parseRedactTerminalPaymentInstruction(instruction),
+      };
+    }
     case ProtectedPayInstruction.ScheduleCrankProbe: {
       assertIsInstructionWithAccounts(instruction);
       return {
         instructionType: ProtectedPayInstruction.ScheduleCrankProbe,
         ...parseScheduleCrankProbeInstruction(instruction),
+      };
+    }
+    case ProtectedPayInstruction.SchedulePayment: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ProtectedPayInstruction.SchedulePayment,
+        ...parseSchedulePaymentInstruction(instruction),
+      };
+    }
+    case ProtectedPayInstruction.UpdateTimingPolicy: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ProtectedPayInstruction.UpdateTimingPolicy,
+        ...parseUpdateTimingPolicyInstruction(instruction),
       };
     }
     case ProtectedPayInstruction.WithdrawUsdc: {
@@ -620,14 +951,28 @@ export type ProtectedPayPluginAccounts = {
     SelfFetchFunctions<CrankProbeArgs, CrankProbe>;
   deposit: ReturnType<typeof getDepositCodec> &
     SelfFetchFunctions<DepositArgs, Deposit>;
+  payment: ReturnType<typeof getPaymentCodec> &
+    SelfFetchFunctions<PaymentArgs, Payment>;
   vault: ReturnType<typeof getVaultCodec> &
     SelfFetchFunctions<VaultArgs, Vault>;
 };
 
 export type ProtectedPayPluginInstructions = {
+  acknowledgePayment: (
+    input: AcknowledgePaymentInput,
+  ) => ReturnType<typeof getAcknowledgePaymentInstruction> &
+    SelfPlanAndSendFunctions;
   advanceCrankProbe: (
     input: AdvanceCrankProbeInput,
   ) => ReturnType<typeof getAdvanceCrankProbeInstruction> &
+    SelfPlanAndSendFunctions;
+  advancePayment: (
+    input: AdvancePaymentInput,
+  ) => ReturnType<typeof getAdvancePaymentInstruction> &
+    SelfPlanAndSendFunctions;
+  cancelPayment: (
+    input: CancelPaymentInput,
+  ) => ReturnType<typeof getCancelPaymentInstruction> &
     SelfPlanAndSendFunctions;
   commitAndUndelegateCrankProbe: (
     input: MakeOptional<CommitAndUndelegateCrankProbeAsyncInput, "payer">,
@@ -637,6 +982,10 @@ export type ProtectedPayPluginInstructions = {
     input: MakeOptional<CommitAndUndelegateDepositInput, "payer">,
   ) => ReturnType<typeof getCommitAndUndelegateDepositInstruction> &
     SelfPlanAndSendFunctions;
+  commitAndUndelegatePayment: (
+    input: MakeOptional<CommitAndUndelegatePaymentInput, "payer">,
+  ) => ReturnType<typeof getCommitAndUndelegatePaymentInstruction> &
+    SelfPlanAndSendFunctions;
   createCrankProbePermission: (
     input: MakeOptional<CreateCrankProbePermissionAsyncInput, "payer">,
   ) => ReturnType<typeof getCreateCrankProbePermissionInstructionAsync> &
@@ -644,6 +993,10 @@ export type ProtectedPayPluginInstructions = {
   createDepositPermission: (
     input: MakeOptional<CreateDepositPermissionInput, "payer">,
   ) => ReturnType<typeof getCreateDepositPermissionInstruction> &
+    SelfPlanAndSendFunctions;
+  createPaymentPermission: (
+    input: MakeOptional<CreatePaymentPermissionInput, "payer">,
+  ) => ReturnType<typeof getCreatePaymentPermissionInstruction> &
     SelfPlanAndSendFunctions;
   delegateCrankProbe: (
     input: MakeOptional<DelegateCrankProbeAsyncInput, "payer">,
@@ -660,6 +1013,14 @@ export type ProtectedPayPluginInstructions = {
   delegateDepositPermission: (
     input: MakeOptional<DelegateDepositPermissionAsyncInput, "payer">,
   ) => ReturnType<typeof getDelegateDepositPermissionInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  delegatePayment: (
+    input: MakeOptional<DelegatePaymentAsyncInput, "payer">,
+  ) => ReturnType<typeof getDelegatePaymentInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  delegatePaymentPermission: (
+    input: MakeOptional<DelegatePaymentPermissionAsyncInput, "payer">,
+  ) => ReturnType<typeof getDelegatePaymentPermissionInstructionAsync> &
     SelfPlanAndSendFunctions;
   depositUsdc: (
     input: DepositUsdcAsyncInput,
@@ -681,13 +1042,33 @@ export type ProtectedPayPluginInstructions = {
     input: InitializeVaultAsyncInput,
   ) => ReturnType<typeof getInitializeVaultInstructionAsync> &
     SelfPlanAndSendFunctions;
+  openPayment: (
+    input: OpenPaymentAsyncInput,
+  ) => ReturnType<typeof getOpenPaymentInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  preparePayment: (
+    input: PreparePaymentAsyncInput,
+  ) => ReturnType<typeof getPreparePaymentInstructionAsync> &
+    SelfPlanAndSendFunctions;
   processUndelegation: (
     input: MakeOptional<ProcessUndelegationInput, "payer">,
   ) => ReturnType<typeof getProcessUndelegationInstruction> &
     SelfPlanAndSendFunctions;
+  redactTerminalPayment: (
+    input: RedactTerminalPaymentInput,
+  ) => ReturnType<typeof getRedactTerminalPaymentInstruction> &
+    SelfPlanAndSendFunctions;
   scheduleCrankProbe: (
     input: MakeOptional<ScheduleCrankProbeAsyncInput, "payer">,
   ) => ReturnType<typeof getScheduleCrankProbeInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  schedulePayment: (
+    input: MakeOptional<SchedulePaymentAsyncInput, "payer">,
+  ) => ReturnType<typeof getSchedulePaymentInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  updateTimingPolicy: (
+    input: UpdateTimingPolicyAsyncInput,
+  ) => ReturnType<typeof getUpdateTimingPolicyInstructionAsync> &
     SelfPlanAndSendFunctions;
   withdrawUsdc: (
     input: WithdrawUsdcAsyncInput,
@@ -706,6 +1087,10 @@ export type ProtectedPayPluginPdas = {
   delegationRecordDeposit: typeof findDelegationRecordDepositPda;
   delegationMetadataDeposit: typeof findDelegationMetadataDepositPda;
   deposit: typeof findDepositPda;
+  bufferPayment: typeof findBufferPaymentPda;
+  delegationRecordPayment: typeof findDelegationRecordPaymentPda;
+  delegationMetadataPayment: typeof findDelegationMetadataPaymentPda;
+  payment: typeof findPaymentPda;
   vault: typeof findVaultPda;
   initializeCrankProbeCrankProbe: typeof findInitializeCrankProbeCrankProbePda;
 };
@@ -727,13 +1112,29 @@ export function protectedPayProgram() {
           config: addSelfFetchFunctions(client, getConfigCodec()),
           crankProbe: addSelfFetchFunctions(client, getCrankProbeCodec()),
           deposit: addSelfFetchFunctions(client, getDepositCodec()),
+          payment: addSelfFetchFunctions(client, getPaymentCodec()),
           vault: addSelfFetchFunctions(client, getVaultCodec()),
         },
         instructions: {
+          acknowledgePayment: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getAcknowledgePaymentInstruction(input),
+            ),
           advanceCrankProbe: (input) =>
             addSelfPlanAndSendFunctions(
               client,
               getAdvanceCrankProbeInstruction(input),
+            ),
+          advancePayment: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getAdvancePaymentInstruction(input),
+            ),
+          cancelPayment: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getCancelPaymentInstruction(input),
             ),
           commitAndUndelegateCrankProbe: (input) =>
             addSelfPlanAndSendFunctions(
@@ -751,6 +1152,14 @@ export function protectedPayProgram() {
                 payer: input.payer ?? client.payer,
               }),
             ),
+          commitAndUndelegatePayment: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getCommitAndUndelegatePaymentInstruction({
+                ...input,
+                payer: input.payer ?? client.payer,
+              }),
+            ),
           createCrankProbePermission: (input) =>
             addSelfPlanAndSendFunctions(
               client,
@@ -763,6 +1172,14 @@ export function protectedPayProgram() {
             addSelfPlanAndSendFunctions(
               client,
               getCreateDepositPermissionInstruction({
+                ...input,
+                payer: input.payer ?? client.payer,
+              }),
+            ),
+          createPaymentPermission: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getCreatePaymentPermissionInstruction({
                 ...input,
                 payer: input.payer ?? client.payer,
               }),
@@ -799,6 +1216,22 @@ export function protectedPayProgram() {
                 payer: input.payer ?? client.payer,
               }),
             ),
+          delegatePayment: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getDelegatePaymentInstructionAsync({
+                ...input,
+                payer: input.payer ?? client.payer,
+              }),
+            ),
+          delegatePaymentPermission: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getDelegatePaymentPermissionInstructionAsync({
+                ...input,
+                payer: input.payer ?? client.payer,
+              }),
+            ),
           depositUsdc: (input) =>
             addSelfPlanAndSendFunctions(
               client,
@@ -830,6 +1263,16 @@ export function protectedPayProgram() {
               client,
               getInitializeVaultInstructionAsync(input),
             ),
+          openPayment: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getOpenPaymentInstructionAsync(input),
+            ),
+          preparePayment: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getPreparePaymentInstructionAsync(input),
+            ),
           processUndelegation: (input) =>
             addSelfPlanAndSendFunctions(
               client,
@@ -838,6 +1281,11 @@ export function protectedPayProgram() {
                 payer: input.payer ?? client.payer.address,
               }),
             ),
+          redactTerminalPayment: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getRedactTerminalPaymentInstruction(input),
+            ),
           scheduleCrankProbe: (input) =>
             addSelfPlanAndSendFunctions(
               client,
@@ -845,6 +1293,19 @@ export function protectedPayProgram() {
                 ...input,
                 payer: input.payer ?? client.payer,
               }),
+            ),
+          schedulePayment: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSchedulePaymentInstructionAsync({
+                ...input,
+                payer: input.payer ?? client.payer,
+              }),
+            ),
+          updateTimingPolicy: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getUpdateTimingPolicyInstructionAsync(input),
             ),
           withdrawUsdc: (input) =>
             addSelfPlanAndSendFunctions(
@@ -863,6 +1324,10 @@ export function protectedPayProgram() {
           delegationRecordDeposit: findDelegationRecordDepositPda,
           delegationMetadataDeposit: findDelegationMetadataDepositPda,
           deposit: findDepositPda,
+          bufferPayment: findBufferPaymentPda,
+          delegationRecordPayment: findDelegationRecordPaymentPda,
+          delegationMetadataPayment: findDelegationMetadataPaymentPda,
+          payment: findPaymentPda,
           vault: findVaultPda,
           initializeCrankProbeCrankProbe: findInitializeCrankProbeCrankProbePda,
         },
