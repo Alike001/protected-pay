@@ -5,6 +5,7 @@
 /.next/
 /dist/
 /coverage/
+/.playwright-mcp/
 
 # Local keys and environment values must never be committed.
 *.json.keypair

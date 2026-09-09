@@ -34,7 +34,11 @@ The separately approved sender-only expiry claim finalized on the Private ER. It
 
 The corrected Payment layout has now passed its field-by-field privacy audit and terminal closeout. Sender, recipient, payment ID, mint, permission membership, validator, and delegation timing are public; amount, memo hash, live status and deadlines, task ID, and aggregate balances remain protected while delegated. The 320-byte Payment-only closeout passed signature-verified simulation and then finalized across the Private ER and Solana Devnet. The public Payment contains only its redacted terminal form and exact commitment; both aggregate Deposits remain delegated, the original amount and memo are absent from public logs and state, no USDC moved, and the vault still holds 3 test USDC.
 
-This completes the Phase 4 live state-machine and privacy proof. A funded sender's public Payment creation and two delegations also fit in one 797-byte simulated transaction. The honest normal-flow count is two transaction approvals plus one off-chain TEE authentication message on a cold session, or two prompts with a valid cached session. The product must not claim one-click sending. Product UI is next.
+This completes the Phase 4 live state-machine and privacy proof. A funded sender's public Payment creation and two delegations also fit in one 797-byte simulated transaction. The honest normal-flow count is two transaction approvals plus one off-chain TEE authentication message on a cold session, or two prompts with a valid cached session. The product does not claim one-click sending.
+
+Phase 5 is now in progress. The first React/Vite product slice implements the 30-second sender dashboard, recipient payment view, real wallet discovery/connection, in-memory Private ER authentication for protected-balance reads, an honest three-stage approval review, recovery confirmation, responsive layouts, and a judge-facing proof drawer. Successful financial mutations are deliberately disabled until their browser transaction adapters are wired; development-only `?preview=sender` and `?preview=recipient` fixtures are unreachable when Vite replaces the development guard in a production build.
+
+Run the interface with `npm run dev:web`, validate it with `npm run typecheck:web`, and produce the optimized client with `npm run build:web`.
 
 ## Source layout
 
@@ -43,6 +47,8 @@ This completes the Phase 4 live state-machine and privacy proof. A funded sender
 - `scripts`: guarded simulation, transaction, verification, and privacy-audit runners
 - `context`: product, ecosystem, prior-art, requirements, and implementation research
 - `artifacts/feasibility`: reproducible evidence for each technical gate
+- `src`: React product interface and private-balance session hook
+- `context/design`: generated visual concepts and the implementation UI specification
 
 The Devnet program ID is `w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk`. Its private deployment key is generated under ignored `target/deploy/` and must never be committed or displayed.
 

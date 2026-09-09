@@ -1,6 +1,6 @@
 # Plan: Protected Pay Risk-First Hackathon Build
 
-Status: active implementation plan. G0–G3 and Phase 4 are complete with narrowed privacy language. Version 2.1 is deployed, both corrected live paths pass end to end, retry safety passes, and the corrected Payment passed its field-by-field privacy audit through finalized public redacted commitment. Funded-sender packaging is measured at two transaction approvals plus one cold-session authentication message. The next work is the product interface, followed by final end-to-end evidence and submission.
+Status: active implementation plan. G0–G3 and Phase 4 are complete with narrowed privacy language. Version 2.1 is deployed, both corrected live paths pass end to end, retry safety passes, and the corrected Payment passed its field-by-field privacy audit through finalized public redacted commitment. Funded-sender packaging is measured at two transaction approvals plus one cold-session authentication message. Phase 5's interface foundation is implemented and verified; real browser transaction adapters and authoritative payment reconciliation are next, followed by final end-to-end evidence and submission.
 
 ## Inputs
 
@@ -122,7 +122,7 @@ The first three technical risks from the accepted specification map directly to 
 | G3 privacy | NARROW PASS | Outsider denial and the corrected Payment's pre-commit public/private boundary measured | Independently verify TEE attestation and the public post-commit bytes |
 | Decision | NARROW / PROCEED | The architecture is viable with precise privacy language | Do not claim anonymity or permanent secrecy |
 | Phase 4 | COMPLETE | Settlement, unattended expiry, owner-only recovery, retry safety, corrected-layout privacy, and finalized redacted public closeout proven against live state | Preserve as regression and judge evidence |
-| Phase 5 | WAITING | — | Build the 30-second product UI only after Phase 4 live tests pass |
+| Phase 5 | IN PROGRESS | React/Vite sender and recipient surfaces, real Wallet Standard connection, private-balance authentication/read, proof drawer, responsive QA | Wire financial transaction adapters, live Payment reads/subscriptions, sharing, and remaining error states |
 | Phase 6 | WAITING | — | End-to-end evidence, video, deployment, and submission |
 
 ## Immediate Remaining Plan
@@ -137,7 +137,7 @@ The first three technical risks from the accepted specification map directly to 
 8. **Complete on Private ER:** the corrected settlement path pays the recipient, while the unattended path reached `Expired` at call six and its sender-only claim restored 1 test USDC, cleared escrow, redacted sensitive fields, and preserved the privacy boundary. Signed retry simulations prove repeated `advance_payment` is a byte-for-byte no-op and repeated `claim_payment` fails with `PaymentRedacted (6022)` without a second credit.
 9. **Complete:** the 320-byte Payment-only closeout passed signature-verified simulation and finalized at Private ER slot `301184653` and Devnet slot `495841058`. Public verification proves the Payment was redacted before commitment, its terminal commitment matches, its delegation record/metadata closed, both aggregate Deposits and the Payment Permission remain delegated, vault collateral remains 3 test USDC, and neither original amount nor memo hash appears in public logs or state.
 10. **Complete:** the four public Payment setup/delegation instructions fit in one 797-byte transaction and simulated successfully with 141,907 compute units. Atomic private open/schedule is 494 bytes and already proven live. A funded sender therefore sees three cold-session wallet prompts—public setup transaction, off-chain TEE authentication message, private open transaction—or two prompts while the authentication session is valid. Do not claim one-click or one-approval sending.
-11. Build the product UI: fund, send, share, acknowledge, countdown, Undo, activity, withdrawal, recovery, plus a separate judge-proof view.
+11. **In progress:** the product UI foundation now covers connect, protected-balance unlock/read, send/review, pending detail, recipient acknowledgement, countdown, Undo confirmation, activity, withdrawal placement, and judge proof. The remaining work is to connect the real fund/send/share/acknowledge/Undo/withdraw instructions, restore authoritative state after reload, and implement denied/delayed/error variants.
 12. Run all three end-to-end stories from fresh state, perform the final verification audit, deploy the web client, record the product-first video, confirm the authenticated submission deadline, and submit.
 
 AI assistance, fiat/card integrations, multi-token support, and Resolva integration remain deferred. Circle Devnet test USDC stays the only MVP asset unless the organizer requires another mint.
