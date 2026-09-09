@@ -1909,3 +1909,35 @@ Independent verifier signed or broadcast a financial transaction: false
 ```
 
 This completes the corrected live unattended-expiry lifecycle: private open, six autonomous validator-signed calls, deterministic expiry, and sender-only recovery. The next checkpoint must prove retry safety: another `advance_payment` cannot mutate terminal state, and another `claim_payment` cannot credit the sender twice.
+
+## Version-2.1 expiry retry-safety preflight
+
+The deployed program source and local tests confirm the intended terminal behavior: `advance_payment` returns success immediately when a Payment is terminal, before the redaction guard, while `claim_payment` rejects a redacted Payment with `PaymentRedacted (6022)` before crediting any Deposit. A dedicated simulation-only runner was added to verify both properties against the finalized live expiry fixture.
+
+The unsigned public preflight validates the exact delegated Payment topology, 3 test USDC of vault collateral, and continued unauthenticated denial. It constructs the two future transaction shapes with a no-op signer but does not authenticate, sign, simulate, or broadcast them.
+
+```text
+Cluster: Solana Devnet and MagicBlock Private ER
+Finalized public read slot: 495828746
+Payment: AvZwmKkHPvrTHk3qyYCeuTAg2jSSrYM9tLEm4gKUD759
+Payment label: protected-pay:phase4:v2.1:expiry:1
+Future signer and fee payer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Simulation 1 instruction: advance_payment
+Simulation 1 accounts: Payment only
+Simulation 1 expected result: success, byte-for-byte no-op
+Simulation 2 instruction: claim_payment
+Simulation 2 accounts: Payment and sender Deposit only
+Simulation 2 expected result: PaymentRedacted (6022)
+Expected sender available before and after: 2.000000 test USDC
+Recipient Deposit included: false
+SPL token movement: none
+Vault collateral: 3.000000 test USDC
+Delegated owners and allocations valid: true
+Unauthenticated protected reads: all null
+Keypair loaded: false
+TEE authentication signed: false
+Transactions signed: false
+Transactions broadcast: false
+```
+
+The next checkpoint requires explicit approval to authenticate the sender and sign both simulation-only transactions. The runner contains no send path and will reject `--send` unconditionally.
