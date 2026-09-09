@@ -432,3 +432,38 @@ Current MagicBlock documentation says a private permission presently implies acc
 This is a product-architecture finding, not a passed Crank gate. The recommended correction is to move automated terminal decisions into a shared per-Payment escrow/state account, then let the sender or recipient claim the terminal result into only their own private Deposit. That keeps the automation account shared without exposing either party's aggregate balance.
 
 For the currently locked test payment, `cancel_payment` is still available as the immediate human-recovery path because it touches only the shared Payment and sender Deposit. It will return the locked 1 test USDC to the sender's private available balance.
+
+## Expired-Payment human-recovery simulation
+
+After explicit approval, the sender authenticated with the Query Filtering Service and simulated `cancel_payment` against the expired private Payment. The guarded client rejected broadcast mode, verified the exact sender identity, validated the public delegated snapshots and vault collateral, then validated the authenticated Payment, sender Deposit, and permission accounts before decoding them.
+
+The cancellation instruction contained only the sender, shared Payment, and sender Deposit. It did not request the recipient wallet or recipient Deposit, so it stayed within the sender's privacy permissions and executed normally.
+
+```text
+Observed at: 1788949430
+Payment expiry: 1788946809
+Expired by: 2,621 seconds
+Private Payment before/after: Created -> Cancelled
+Private sender available: 2.000000 -> 3.000000 test USDC
+Private sender locked: 1.000000 -> 0 test USDC
+Private sender payment nonce: 2 -> 2
+Payment terms changed: status only
+Instruction accounts: sender, Payment, sender Deposit
+Recipient account required: no
+Transaction size: 286 bytes
+Prepared, unbroadcast signature: 2UfdXjNdPdaNiuAnyna5nkdzjRiMVwPLpL3zG52eXsHCCmxrRw88SEEyGijdcMLmNfizCKGs5NZXArM1uwAo3DmM
+Signature verification: passed
+Simulation error: null
+Compute units consumed: 9,810
+Private ER reported transaction fee: unavailable
+SPL token movement: none
+Protected amount or memo hash in program logs: false
+Unauthenticated protected reads: all null
+Private state persisted after simulation: false
+Public state changed after simulation: false
+Vault balance changed after simulation: false
+Signed: true
+Broadcast: false
+```
+
+This passes the immediate human-recovery proof: even after expiry, the sender can interrupt the failed workflow and recover the entire reserved balance without learning or modifying the recipient's aggregate private balance. Because this was simulation-only, the live private Payment remains `Created` and the live 1 test USDC remains locked until a separately approved cancellation is broadcast.
