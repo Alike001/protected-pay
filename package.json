@@ -44,6 +44,7 @@
     "p4:simulate:payment-bootstrap": "tsx scripts/p4-simulate-payment-bootstrap.ts",
     "p4:send:payment-bootstrap": "tsx scripts/p4-simulate-payment-bootstrap.ts --send --approved-p4-payment-bootstrap",
     "p4:simulate:sender-delegation": "tsx scripts/p4-simulate-sender-delegation.ts",
+    "p4:send:sender-delegation": "tsx scripts/p4-simulate-sender-delegation.ts --send --approved-p4-sender-delegation",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

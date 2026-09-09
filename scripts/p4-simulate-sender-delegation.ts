@@ -2,20 +2,30 @@ import { createHash } from "node:crypto";
 
 import {
   appendTransactionMessageInstructions,
+  assertIsTransactionWithBlockhashLifetime,
+  assertIsTransactionWithinSizeLimit,
   compileTransaction,
+  createClient,
   createNoopSigner,
   createSolanaRpc,
+  createSolanaRpcSubscriptions,
   createTransactionMessage,
   getAddressEncoder,
   getBase64EncodedWireTransaction,
   getProgramDerivedAddress,
+  getSignatureFromTransaction,
   pipe,
+  sendAndConfirmTransactionFactory,
   setTransactionMessageFeePayer,
+  setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
+  signTransactionMessageWithSigners,
   type Address,
   type ReadonlyUint8Array,
+  type TransactionSigner,
 } from "@solana/kit";
 import { getSetComputeUnitLimitInstruction } from "@solana-program/compute-budget";
+import { signerFromFile } from "@solana/kit-plugin-signer";
 
 import {
   CONFIG_DISCRIMINATOR,
@@ -49,6 +59,7 @@ import {
 } from "./gate1-simulate-delegation.ts";
 
 const RPC_URL = "https://api.devnet.solana.com" as const;
+const RPC_SUBSCRIPTIONS_URL = "wss://api.devnet.solana.com" as const;
 const UPGRADEABLE_LOADER =
   "BPFLoaderUpgradeab1e11111111111111111111111" as Address;
 const SYSTEM_PROGRAM = "11111111111111111111111111111111" as Address;
@@ -65,6 +76,8 @@ const DEPOSIT_SIZE = 98;
 const PAYMENT_SIZE = 245;
 const PERMISSION_SIZE = 567;
 const COMPUTE_UNIT_LIMIT = 800_000;
+const SEND_REQUESTED = process.argv.includes("--send");
+const APPROVAL_FLAG = "--approved-p4-sender-delegation";
 
 type EncodedAccountData = readonly [string, string];
 
@@ -115,7 +128,9 @@ async function permissionPda(protectedAccount: Address) {
   return permission;
 }
 
-async function derivePlan() {
+async function derivePlan(
+  transactionSigner: TransactionSigner = createNoopSigner(AUTHORITY),
+) {
   const sender = await deriveAddresses();
   const [payment] = await findPaymentPda(
     { paymentId: PAYMENT_ID },
@@ -128,12 +143,11 @@ async function derivePlan() {
       deriveDelegationPdas(payment, PROGRAM_ID),
       deriveDelegationPdas(sender.deposit, PROGRAM_ID),
     ]);
-  const signer = createNoopSigner(AUTHORITY);
   const instructions = [
     getSetComputeUnitLimitInstruction({ units: COMPUTE_UNIT_LIMIT }),
     await getDelegatePaymentPermissionInstructionAsync({
-      payer: signer,
-      sender: signer,
+      payer: transactionSigner,
+      sender: transactionSigner,
       config: sender.config,
       payment,
       permission: paymentPermission,
@@ -143,8 +157,8 @@ async function derivePlan() {
       validator: PRIVATE_VALIDATOR,
     }),
     await getDelegatePaymentInstructionAsync({
-      payer: signer,
-      sender: signer,
+      payer: transactionSigner,
+      sender: transactionSigner,
       config: sender.config,
       validator: PRIVATE_VALIDATOR,
       bufferPayment: paymentDelegation.buffer,
@@ -154,8 +168,8 @@ async function derivePlan() {
       paymentId: PAYMENT_ID,
     }),
     await getDelegateDepositInstructionAsync({
-      payer: signer,
-      owner: signer,
+      payer: transactionSigner,
+      owner: transactionSigner,
       config: sender.config,
       validator: PRIVATE_VALIDATOR,
       bufferDeposit: depositDelegation.buffer,
@@ -472,4 +486,255 @@ async function simulateSenderDelegation(): Promise<void> {
   );
 }
 
-await simulateSenderDelegation();
+async function sendApprovedSenderDelegation(): Promise<void> {
+  const keypairPath = process.env.SOLANA_KEYPAIR_PATH;
+  if (!keypairPath) {
+    throw new Error("SOLANA_KEYPAIR_PATH must name the already-approved sender signer");
+  }
+
+  // Repeat every unsigned state validation and simulation before loading the signer.
+  await simulateSenderDelegation();
+
+  const signerClient = await createClient().use(signerFromFile(keypairPath));
+  if (
+    signerClient.identity.address !== AUTHORITY ||
+    signerClient.payer.address !== AUTHORITY
+  ) {
+    throw new Error("Signer does not match the approved sender and fee payer");
+  }
+  const rpc = createSolanaRpc(RPC_URL);
+  const plan = await derivePlan(signerClient.identity);
+  const authorityBefore = await rpc
+    .getBalance(AUTHORITY, { commitment: "finalized" })
+    .send();
+  const { value: latestBlockhash } = await rpc
+    .getLatestBlockhash({ commitment: "confirmed" })
+    .send();
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (current) => setTransactionMessageFeePayerSigner(signerClient.payer, current),
+    (current) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, current),
+    (current) => appendTransactionMessageInstructions(plan.instructions, current),
+  );
+  const signedTransaction = await signTransactionMessageWithSigners(message);
+  assertIsTransactionWithBlockhashLifetime(signedTransaction);
+  assertIsTransactionWithinSizeLimit(signedTransaction);
+  const signedWire = getBase64EncodedWireTransaction(signedTransaction);
+  const signature = getSignatureFromTransaction(signedTransaction);
+  const delegationPdas = [
+    plan.paymentPermissionDelegation.buffer,
+    plan.paymentPermissionDelegation.record,
+    plan.paymentPermissionDelegation.metadata,
+    plan.paymentDelegation.buffer,
+    plan.paymentDelegation.record,
+    plan.paymentDelegation.metadata,
+    plan.depositDelegation.buffer,
+    plan.depositDelegation.record,
+    plan.depositDelegation.metadata,
+  ] as const;
+  const simulatedAddresses = [
+    plan.paymentPermission,
+    plan.payment,
+    plan.deposit,
+    ...delegationPdas,
+    plan.vaultUsdcAta,
+  ] as const;
+  const signedSimulation = await rpc
+    .simulateTransaction(signedWire, {
+      accounts: { addresses: simulatedAddresses, encoding: "base64" },
+      commitment: "confirmed",
+      encoding: "base64",
+      innerInstructions: true,
+      replaceRecentBlockhash: false,
+      sigVerify: true,
+    })
+    .send();
+  if (signedSimulation.value.err !== null) {
+    throw new Error(
+      `Signed sender-delegation preflight failed: ${json({
+        err: signedSimulation.value.err,
+        logs: signedSimulation.value.logs,
+      })}`,
+    );
+  }
+  const signedPost = signedSimulation.value.accounts;
+  if (!signedPost || signedPost.some((account) => account === null)) {
+    throw new Error("Signed sender-delegation simulation returned incomplete post-state");
+  }
+  if (
+    signedPost[0]?.owner !== DELEGATION_PROGRAM_ID ||
+    signedPost[1]?.owner !== DELEGATION_PROGRAM_ID ||
+    signedPost[2]?.owner !== DELEGATION_PROGRAM_ID ||
+    signedPost[12]?.owner !== TOKEN_PROGRAM_ID
+  ) {
+    throw new Error("Signed simulation returned invalid delegated owners or vault owner");
+  }
+  const signedPayment = getPaymentDecoder().decode(accountBytes(signedPost[1].data));
+  const signedDeposit = getDepositDecoder().decode(accountBytes(signedPost[2].data));
+  assertDiscriminator(
+    signedPayment.discriminator,
+    PAYMENT_DISCRIMINATOR,
+    "Signed simulated Payment",
+  );
+  assertDiscriminator(
+    signedDeposit.discriminator,
+    DEPOSIT_DISCRIMINATOR,
+    "Signed simulated Deposit",
+  );
+  if (
+    !bytesEqual(signedPayment.paymentId, PAYMENT_ID) ||
+    signedPayment.amount !== 0n ||
+    signedPayment.initialized ||
+    signedDeposit.available !== 3_000_000n ||
+    signedDeposit.locked !== 0n
+  ) {
+    throw new Error("Signed simulation changed the protected financial state");
+  }
+  console.log(
+    json({
+      signedPreflight: {
+        preparedSignature: signature,
+        cluster: "Solana Devnet",
+        feePayer: AUTHORITY,
+        recipientSignatureRequired: false,
+        usdcMoved: "0",
+        solTransferred: "0",
+        err: null,
+        unitsConsumed: signedSimulation.value.unitsConsumed ?? null,
+        estimatedFeeLamports: signedSimulation.value.fee ?? null,
+      },
+    }),
+  );
+
+  const rpcSubscriptions = createSolanaRpcSubscriptions(RPC_SUBSCRIPTIONS_URL);
+  const sendAndConfirm = sendAndConfirmTransactionFactory({ rpc, rpcSubscriptions });
+  await sendAndConfirm(signedTransaction, { commitment: "finalized" });
+
+  const finalized = await rpc
+    .getMultipleAccounts(
+      [
+        plan.paymentPermission,
+        plan.payment,
+        plan.deposit,
+        ...delegationPdas,
+        plan.vaultUsdcAta,
+        AUTHORITY,
+      ],
+      { commitment: "finalized", encoding: "base64" },
+    )
+    .send();
+  const [
+    paymentPermissionAccount,
+    paymentAccount,
+    depositAccount,
+    permissionBuffer,
+    permissionRecord,
+    permissionMetadata,
+    paymentBuffer,
+    paymentRecord,
+    paymentMetadata,
+    depositBuffer,
+    depositRecord,
+    depositMetadata,
+    vaultTokenAccount,
+    authorityAccount,
+  ] = finalized.value;
+  if (
+    !paymentPermissionAccount ||
+    !paymentAccount ||
+    !depositAccount ||
+    permissionBuffer !== null ||
+    !permissionRecord ||
+    !permissionMetadata ||
+    paymentBuffer !== null ||
+    !paymentRecord ||
+    !paymentMetadata ||
+    depositBuffer !== null ||
+    !depositRecord ||
+    !depositMetadata ||
+    !vaultTokenAccount ||
+    !authorityAccount
+  ) {
+    throw new Error("Finalized sender delegation returned an unexpected account set");
+  }
+  if (
+    paymentPermissionAccount.owner !== DELEGATION_PROGRAM_ID ||
+    accountBytes(paymentPermissionAccount.data).length !== PERMISSION_SIZE ||
+    paymentAccount.owner !== DELEGATION_PROGRAM_ID ||
+    accountBytes(paymentAccount.data).length !== PAYMENT_SIZE ||
+    depositAccount.owner !== DELEGATION_PROGRAM_ID ||
+    accountBytes(depositAccount.data).length !== DEPOSIT_SIZE ||
+    vaultTokenAccount.owner !== TOKEN_PROGRAM_ID ||
+    authorityAccount.owner !== SYSTEM_PROGRAM
+  ) {
+    throw new Error("A finalized delegated account failed owner or length validation");
+  }
+  for (const [label, account, length] of [
+    ["Payment permission record", permissionRecord, 96],
+    ["Payment permission metadata", permissionMetadata, 104],
+    ["Payment record", paymentRecord, 96],
+    ["Payment metadata", paymentMetadata, 100],
+    ["Deposit record", depositRecord, 96],
+    ["Deposit metadata", depositMetadata, 136],
+  ] as const) {
+    if (
+      account.owner !== DELEGATION_PROGRAM_ID ||
+      accountBytes(account.data).length !== length
+    ) {
+      throw new Error(`${label} failed owner/length validation`);
+    }
+  }
+  const payment = getPaymentDecoder().decode(accountBytes(paymentAccount.data));
+  const deposit = getDepositDecoder().decode(accountBytes(depositAccount.data));
+  assertDiscriminator(payment.discriminator, PAYMENT_DISCRIMINATOR, "Payment");
+  assertDiscriminator(deposit.discriminator, DEPOSIT_DISCRIMINATOR, "Deposit");
+  if (
+    !bytesEqual(payment.paymentId, PAYMENT_ID) ||
+    payment.sender !== AUTHORITY ||
+    payment.recipient !== RECIPIENT ||
+    payment.tokenMint !== USDC_MINT ||
+    payment.amount !== 0n ||
+    payment.initialized ||
+    deposit.user !== AUTHORITY ||
+    deposit.tokenMint !== USDC_MINT ||
+    deposit.available !== 3_000_000n ||
+    deposit.locked !== 0n ||
+    deposit.nextPaymentNonce !== 1n
+  ) {
+    throw new Error("Finalized sender delegation failed financial-state validation");
+  }
+  console.log(
+    json({
+      finalizedTransaction: {
+        cluster: "Solana Devnet",
+        signature,
+        finalizedReadSlot: finalized.context.slot,
+        feePayer: AUTHORITY,
+        authorityLamportsBefore: authorityBefore.value,
+        authorityLamportsAfter: authorityAccount.lamports,
+        totalFeeAndRentLamports:
+          authorityBefore.value - authorityAccount.lamports,
+        recipientSignatureRequired: false,
+        usdcMoved: "0",
+        solTransferred: "0",
+        temporaryBuffersPersisted: false,
+        paymentPermissionOwner: paymentPermissionAccount.owner,
+        paymentOwner: paymentAccount.owner,
+        senderDepositOwner: depositAccount.owner,
+        senderAvailableRawUsdc: deposit.available,
+        senderLockedRawUsdc: deposit.locked,
+        paymentAmount: payment.amount,
+        paymentInitialized: payment.initialized,
+      },
+    }),
+  );
+}
+
+if (!SEND_REQUESTED) {
+  await simulateSenderDelegation();
+} else {
+  if (!process.argv.includes(APPROVAL_FLAG)) {
+    throw new Error(`Refusing to sign or send without ${APPROVAL_FLAG}`);
+  }
+  await sendApprovedSenderDelegation();
+}

@@ -261,3 +261,25 @@ Broadcast: false
 ```
 
 The simulation compared the full Payment, Deposit, permission, and vault-token bytes before and after delegation. Their data was unchanged; only account ownership and delegation infrastructure changed. Public Solana still reveals the prepared shell relationships and delegation metadata. The payment amount, memo, and later balance transitions can become private only when they are supplied and executed inside the Private ER.
+
+After explicit approval, the guarded client repeated all unsigned validation, loaded only the sender signer, and passed a signature-verified simulation before broadcast. The transaction finalized, and an independent non-verbose CLI confirmation plus Payment transaction-history lookup returned the same signature.
+
+```text
+Signed preflight error: null
+Signed preflight compute units: 159,751
+Finalized transaction: 2YKheSuZdaFqfh5wyf3WbZ1xYdwJZ7tCHLcoLbUygtBBaSUoA5padMS9AU2oEudHNcBXchPRC3q92N13b5vr3fdA
+Finalized verification slot: 495553995
+Authority balance: 6.72931520 SOL -> 6.72221852 SOL
+Fee plus delegation-account rent: 7,096,680 lamports
+USDC moved: 0
+SOL transferred: 0
+Sender available/locked: 3.000000/0
+Payment amount/initialized: 0/false
+Payment permission owner: MagicBlock Delegation Program
+Payment owner: MagicBlock Delegation Program
+Sender Deposit owner: MagicBlock Delegation Program
+Temporary delegation buffers persisted: false
+Recipient signature required: false
+```
+
+The finalized read validated each delegated account's owner and allocation, all six persistent delegation record/metadata accounts, the absence of temporary buffers, the Payment and Deposit discriminators and relationships, the unchanged vault token account, and the unchanged financial state.
