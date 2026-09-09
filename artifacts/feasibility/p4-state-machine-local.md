@@ -467,3 +467,25 @@ Broadcast: false
 ```
 
 This passes the immediate human-recovery proof: even after expiry, the sender can interrupt the failed workflow and recover the entire reserved balance without learning or modifying the recipient's aggregate private balance. Because this was simulation-only, the live private Payment remains `Created` and the live 1 test USDC remains locked until a separately approved cancellation is broadcast.
+
+After separate explicit approval, the guarded client authenticated again, rebuilt the cancellation from the still-live `Created` state, and passed a fresh signature-verified simulation. It then submitted that exact signed transaction, waited for Private ER finalization, and independently decoded the protected Payment and sender Deposit.
+
+```text
+Finalized Private ER transaction: 49YRj4WXZchmcioscE8b3fkMBBU7DKwSc7HuqSrSfsbpnvJtfciBrPR5XrNRtqXZFrMKRabMu8YkA5YNh5T4KmaY
+Finalized Private ER slot: 300327313
+Confirmation status: finalized
+Private Payment status: Cancelled
+Private sender available: 3.000000 test USDC
+Private sender locked: 0 test USDC
+Private sender payment nonce: 2
+Internal amount recovered: 1.000000 test USDC
+Recipient signature required: false
+SPL token movement: none
+Public state changed: false
+Vault balance changed: false
+Unauthenticated protected reads: all null
+Authentication token printed or persisted: false
+Hardware attestation independently verified: false
+```
+
+The live recovery is complete. The three real test USDC remain fully collateralized in the public vault while all three are once again available to the sender in private accounting. This proves the manual recovery path; it does not resolve the separate Crank permission-topology blocker documented above.
