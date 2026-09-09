@@ -29,7 +29,7 @@ const PROGRAM_ID =
 const PROGRAM_DATA =
   "BXX67CiW14MVLku97gfUm4muQKwUc7uDsSrbC9qsYRAj" as Address;
 const BUFFER =
-  "CjV4LC6X8pY6C2uoB7fEGFvXXZvtY7Mg2kGwPvjYhB1r" as Address;
+  "8qK2AAvUN6hmwFdMq6B3uDrqPZmk2b4RtucanEHpW48Q" as Address;
 const EXPECTED_AUTHORITY =
   "6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn" as Address;
 const UPGRADEABLE_LOADER =
@@ -39,14 +39,14 @@ const RENT_SYSVAR = "SysvarRent111111111111111111111111111111111" as Address;
 const CLOCK_SYSVAR = "SysvarC1ock11111111111111111111111111111111" as Address;
 const BINARY_PATH = "target/deploy/protected_pay.so";
 const EXPECTED_BINARY_SHA256 =
-  "5b2f04b8b347a85e5f7f03dc9305709aaaab7fb538738d348919a8811756d6f5";
+  "e7998fcd2c85f5accead0ba7e6317dfb6bfebed210ea1d18a0b622047d4f78f1";
 const PROGRAM_DATA_METADATA_LENGTH = 45;
 const BUFFER_METADATA_LENGTH = 37;
 const PROGRAM_DATA_CAPACITY = 635_136;
 const UPGRADE_VARIANT = 3;
 const APPROVAL_FLAG =
-  "--approved-exact-v2-devnet-upgrade-signed-simulation";
-const BROADCAST_APPROVAL_FLAG = "--approved-v2-devnet-program-upgrade";
+  "--approved-exact-v21-devnet-upgrade-signed-simulation";
+const BROADCAST_APPROVAL_FLAG = "--approved-v21-devnet-program-upgrade";
 const shouldSend = process.argv.includes("--send");
 const broadcastApproved = process.argv.includes(BROADCAST_APPROVAL_FLAG);
 
@@ -110,7 +110,7 @@ const binary = await readFile(BINARY_PATH);
 const binarySha256 = createHash("sha256").update(binary).digest("hex");
 if (binarySha256 !== EXPECTED_BINARY_SHA256) {
   throw new Error(
-    `Refusing stale/unreviewed binary: expected ${EXPECTED_BINARY_SHA256}, got ${binarySha256}`,
+    `Refusing stale/unreviewed version-2.1 binary: expected ${EXPECTED_BINARY_SHA256}, got ${binarySha256}`,
   );
 }
 
@@ -186,7 +186,7 @@ if (
     ),
   ).equals(binary)
 ) {
-  throw new Error("Version-2 bytecode is already deployed; refusing a redundant upgrade simulation");
+  throw new Error("Version-2.1 bytecode is already deployed; refusing a redundant upgrade simulation");
 }
 
 if (
@@ -212,7 +212,7 @@ if (
   finalizedBufferSha256 !== binarySha256 ||
   !finalizedBufferBytes.equals(binary)
 ) {
-  throw new Error("Finalized buffer does not match the reviewed version-2 artifact");
+  throw new Error("Finalized buffer does not match the reviewed version-2.1 artifact");
 }
 
 if (
@@ -313,7 +313,7 @@ const simulatedBytecode = Buffer.from(
   ),
 );
 if (!simulatedBytecode.equals(binary)) {
-  throw new Error("Simulated ProgramData bytecode does not match version 2");
+  throw new Error("Simulated ProgramData bytecode does not match version 2.1");
 }
 if (
   programDataAfter
@@ -426,7 +426,7 @@ if (shouldSend) {
     .update(liveBytecode)
     .digest("hex");
   if (liveBytecodeSha256 !== binarySha256 || !liveBytecode.equals(binary)) {
-    throw new Error("Finalized ProgramData bytecode does not match version 2");
+    throw new Error("Finalized ProgramData bytecode does not match version 2.1");
   }
   if (
     liveProgramDataBytes
@@ -460,6 +460,7 @@ if (shouldSend) {
   console.log(
     json({
       cluster: "Solana Devnet",
+      release: "version-2.1",
       transactionBroadcast: true,
       confirmationStatus: "finalized",
       finalizedSignature: preparedSignature,
@@ -525,6 +526,7 @@ console.log(
     simulationOnly: true,
     transactionBroadcast: false,
     cluster: "Solana Devnet",
+    release: "version-2.1",
     rpcHost: new URL(RPC_URL).hostname,
     instruction: "UpgradeableLoaderInstruction::Upgrade",
     programId: PROGRAM_ID,

@@ -1018,3 +1018,37 @@ Transactions broadcast: none
 ```
 
 The exact simulation cannot be performed honestly by chaining non-persistent simulations: the 633,568-byte artifact cannot fit in one Solana transaction, and one simulation's Buffer writes are not visible to the next. Creating and uploading the required buffer changes Devnet state and temporarily locks rent, so it requires separate authorization before the signed simulation can resume.
+
+## Version-2.1 Devnet buffer upload
+
+After separate explicit approval, a fresh upgradeable-loader Buffer was created on Solana Devnet and filled with the reviewed version-2.1 artifact. The configured provider first failed at the transport layer without creating usable state. The official public Devnet uploader then created and initialized the buffer and uploaded 89 of 704 logical chunks before stalling; it was intentionally stopped without damaging or abandoning the buffer.
+
+A guarded resumable uploader validated the buffer owner, discriminator, authority, allocation, rent, and local artifact hash before writing. It scanned existing bytes, skipped the 89 matching chunks, and sent the remaining 615 chunks through MagicBlock Router. Every submitted write used node preflight and was confirmed before its batch advanced. Two transactions encountered an expired blockhash during preflight and were safely rebuilt and retried; neither failed attempt executed a write.
+
+```text
+Cluster: Solana Devnet
+Program: w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk
+ProgramData: BXX67CiW14MVLku97gfUm4muQKwUc7uDsSrbC9qsYRAj
+Buffer: 8qK2AAvUN6hmwFdMq6B3uDrqPZmk2b4RtucanEHpW48Q
+Buffer authority: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Buffer allocation: 633,605 bytes
+Bytecode length: 633,568 bytes
+Buffer rent: 3.21936364 SOL
+Local bytecode SHA-256: e7998fcd2c85f5accead0ba7e6317dfb6bfebed210ea1d18a0b622047d4f78f1
+Finalized buffer SHA-256: e7998fcd2c85f5accead0ba7e6317dfb6bfebed210ea1d18a0b622047d4f78f1
+Initial public-uploader chunks preserved: 89
+Resumed write transactions confirmed: 615
+Independent finalized verification: 704 / 704 chunks already matching
+Writes required by independent verification: 0
+Finalized verification slot: 495724304
+Program deploy slot before upload: 495652516
+Program deploy slot after upload: 495652516
+Program upgrade executed: false
+Authority balance before: 6.70834544 SOL
+Authority balance after: 3.4847668 SOL
+Rent plus transaction costs: 3.22357864 SOL
+Transaction costs excluding refundable rent: 0.004215 SOL
+Temporary one-time buffer signer retained: no
+```
+
+The second finalized scan reconstructed the complete buffer and matched every byte without sending a transaction. The one-time buffer signer file was then deleted; the persistent buffer remains controlled by the intended upgrade authority. No upgrade instruction was signed or broadcast, and the live ProgramData deploy slot did not change. The next checkpoint is an exact signature-verified, non-broadcast upgrade simulation against this buffer.
