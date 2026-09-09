@@ -1,0 +1,17 @@
+/target/
+/.anchor/
+/.turbo/
+/node_modules/
+/.next/
+/dist/
+/coverage/
+
+# Local keys and environment values must never be committed.
+*.json.keypair
+*.keypair.json
+.env
+.env.*
+!.env.example
+
+# Read-only upstream research clones are not part of this product source tree.
+/context/reference-repos/
