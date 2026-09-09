@@ -2,23 +2,32 @@ import { createHash } from "node:crypto";
 
 import {
   appendTransactionMessageInstructions,
+  assertIsTransactionWithBlockhashLifetime,
+  assertIsTransactionWithinSizeLimit,
   compileTransaction,
+  createClient,
   createNoopSigner,
   createSolanaRpc,
+  createSolanaRpcSubscriptions,
   createTransactionMessage,
   getAddressDecoder,
   getAddressEncoder,
   getBase64EncodedWireTransaction,
   getProgramDerivedAddress,
+  getSignatureFromTransaction,
   pipe,
+  sendAndConfirmTransactionFactory,
   setTransactionMessageFeePayer,
+  setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
+  signTransactionMessageWithSigners,
   type Address,
   type Instruction,
   type ReadonlyUint8Array,
   type TransactionSigner,
 } from "@solana/kit";
 import { getSetComputeUnitLimitInstruction } from "@solana-program/compute-budget";
+import { signerFromFile } from "@solana/kit-plugin-signer";
 
 import {
   CONFIG_DISCRIMINATOR,
@@ -57,6 +66,7 @@ import {
 } from "./gate1-simulate-delegation.ts";
 
 const RPC_URL = "https://api.devnet.solana.com" as const;
+const RPC_SUBSCRIPTIONS_URL = "wss://api.devnet.solana.com" as const;
 const UPGRADEABLE_LOADER =
   "BPFLoaderUpgradeab1e11111111111111111111111" as Address;
 const SYSTEM_PROGRAM = "11111111111111111111111111111111" as Address;
@@ -75,6 +85,8 @@ const PAYMENT_SIZE = 245;
 const PERMISSION_SIZE = 567;
 const TOKEN_ACCOUNT_SIZE = 165;
 const COMPUTE_UNIT_LIMIT = 700_000;
+const SEND_REQUESTED = process.argv.includes("--send");
+const APPROVAL_FLAG = "--approved-p4-payment-bootstrap";
 
 type EncodedAccountData = readonly [string, string];
 
@@ -600,4 +612,229 @@ async function simulatePaymentBootstrap() {
   );
 }
 
-await simulatePaymentBootstrap();
+async function sendApprovedBootstrap() {
+  const keypairPath = process.env.SOLANA_KEYPAIR_PATH;
+  if (!keypairPath) {
+    throw new Error("SOLANA_KEYPAIR_PATH must name the already-approved sender signer");
+  }
+
+  // Repeat the complete unsigned pre-state and accounting simulation before
+  // loading a signer from disk.
+  await simulatePaymentBootstrap();
+
+  const signerClient = await createClient().use(signerFromFile(keypairPath));
+  if (
+    signerClient.identity.address !== AUTHORITY ||
+    signerClient.payer.address !== AUTHORITY
+  ) {
+    throw new Error("Signer does not match the approved sender and fee payer");
+  }
+  const addresses = await deriveBootstrapAddresses();
+  const instructions = await buildBootstrapInstructions(signerClient.identity);
+  const { value: latestBlockhash } = await rpc
+    .getLatestBlockhash({ commitment: "confirmed" })
+    .send();
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (current) => setTransactionMessageFeePayerSigner(signerClient.payer, current),
+    (current) =>
+      setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, current),
+    (current) => appendTransactionMessageInstructions(instructions, current),
+  );
+  const signedTransaction = await signTransactionMessageWithSigners(message);
+  assertIsTransactionWithBlockhashLifetime(signedTransaction);
+  assertIsTransactionWithinSizeLimit(signedTransaction);
+  const signedWire = getBase64EncodedWireTransaction(signedTransaction);
+  const signature = getSignatureFromTransaction(signedTransaction);
+  const signedSimulation = await rpc
+    .simulateTransaction(signedWire, {
+      accounts: {
+        addresses: [
+          addresses.walletUsdcAta,
+          addresses.vaultUsdcAta,
+          addresses.vault,
+          addresses.deposit,
+          addresses.recipientDeposit,
+          addresses.recipientPermission,
+          addresses.payment,
+          addresses.paymentPermission,
+        ],
+        encoding: "base64",
+      },
+      commitment: "confirmed",
+      encoding: "base64",
+      innerInstructions: true,
+      replaceRecentBlockhash: false,
+      sigVerify: true,
+    })
+    .send();
+  if (signedSimulation.value.err !== null) {
+    throw new Error(
+      `Signed bootstrap preflight failed: ${json({
+        err: signedSimulation.value.err,
+        logs: signedSimulation.value.logs,
+      })}`,
+    );
+  }
+  const signedPostAccounts = signedSimulation.value.accounts ?? [];
+  if (
+    signedPostAccounts.length !== 8 ||
+    signedPostAccounts[0] === null ||
+    signedPostAccounts[1] === null ||
+    signedPostAccounts[2] === null ||
+    signedPostAccounts[3] === null ||
+    signedPostAccounts[4] === null ||
+    signedPostAccounts[5] !== null ||
+    signedPostAccounts[6] === null ||
+    signedPostAccounts[7] === null
+  ) {
+    throw new Error("Signed bootstrap simulation returned an unexpected account set");
+  }
+  const signedWallet = decodeTokenAccount(accountBytes(signedPostAccounts[0].data));
+  const signedVaultToken = decodeTokenAccount(accountBytes(signedPostAccounts[1].data));
+  const signedVault = getVaultDecoder().decode(accountBytes(signedPostAccounts[2].data));
+  const signedSenderDeposit = getDepositDecoder().decode(
+    accountBytes(signedPostAccounts[3].data),
+  );
+  const signedRecipientDeposit = getDepositDecoder().decode(
+    accountBytes(signedPostAccounts[4].data),
+  );
+  const signedPayment = getPaymentDecoder().decode(accountBytes(signedPostAccounts[6].data));
+  if (
+    signedWallet.amount !== 17_000_000n ||
+    signedVaultToken.amount !== DEPOSIT_AMOUNT ||
+    signedVault.totalLiability !== DEPOSIT_AMOUNT ||
+    signedSenderDeposit.available !== DEPOSIT_AMOUNT ||
+    signedSenderDeposit.locked !== 0n ||
+    signedRecipientDeposit.user !== RECIPIENT ||
+    signedRecipientDeposit.available !== 0n ||
+    signedRecipientDeposit.locked !== 0n ||
+    !bytesEqual(signedPayment.paymentId, PAYMENT_ID) ||
+    signedPayment.sender !== AUTHORITY ||
+    signedPayment.recipient !== RECIPIENT ||
+    signedPayment.amount !== 0n ||
+    signedPayment.initialized ||
+    signedPostAccounts[7].owner !== PERMISSION_PROGRAM_ID
+  ) {
+    throw new Error("Signed bootstrap simulation returned an invalid financial post-state");
+  }
+
+  console.log(
+    json({
+      signedPreflight: {
+        preparedSignature: signature,
+        err: null,
+        unitsConsumed: signedSimulation.value.unitsConsumed ?? null,
+      },
+    }),
+  );
+  const rpcSubscriptions = createSolanaRpcSubscriptions(RPC_SUBSCRIPTIONS_URL);
+  const sendAndConfirm = sendAndConfirmTransactionFactory({ rpc, rpcSubscriptions });
+  await sendAndConfirm(signedTransaction, { commitment: "finalized" });
+
+  const finalized = await rpc
+    .getMultipleAccounts(
+      [
+        addresses.walletUsdcAta,
+        addresses.vaultUsdcAta,
+        addresses.vault,
+        addresses.deposit,
+        addresses.recipientDeposit,
+        addresses.recipientPermission,
+        addresses.payment,
+        addresses.paymentPermission,
+        AUTHORITY,
+      ],
+      { commitment: "finalized", encoding: "base64" },
+    )
+    .send();
+  const [
+    walletAccount,
+    vaultTokenAccount,
+    vaultAccount,
+    senderDepositAccount,
+    recipientDepositAccount,
+    recipientPermissionAccount,
+    paymentAccount,
+    paymentPermissionAccount,
+    authorityAccount,
+  ] = finalized.value;
+  if (
+    !walletAccount ||
+    !vaultTokenAccount ||
+    !vaultAccount ||
+    !senderDepositAccount ||
+    !recipientDepositAccount ||
+    recipientPermissionAccount !== null ||
+    !paymentAccount ||
+    !paymentPermissionAccount ||
+    !authorityAccount
+  ) {
+    throw new Error("Finalized bootstrap verification returned an unexpected account set");
+  }
+  const wallet = decodeTokenAccount(accountBytes(walletAccount.data));
+  const vaultToken = decodeTokenAccount(accountBytes(vaultTokenAccount.data));
+  const vault = getVaultDecoder().decode(accountBytes(vaultAccount.data));
+  const senderDeposit = getDepositDecoder().decode(accountBytes(senderDepositAccount.data));
+  const recipientDeposit = getDepositDecoder().decode(
+    accountBytes(recipientDepositAccount.data),
+  );
+  const payment = getPaymentDecoder().decode(accountBytes(paymentAccount.data));
+  if (
+    walletAccount.owner !== TOKEN_PROGRAM_ID ||
+    wallet.amount !== 17_000_000n ||
+    vaultTokenAccount.owner !== TOKEN_PROGRAM_ID ||
+    vaultToken.amount !== DEPOSIT_AMOUNT ||
+    vaultAccount.owner !== PROGRAM_ID ||
+    vault.totalLiability !== DEPOSIT_AMOUNT ||
+    senderDepositAccount.owner !== PROGRAM_ID ||
+    senderDeposit.available !== DEPOSIT_AMOUNT ||
+    senderDeposit.locked !== 0n ||
+    recipientDepositAccount.owner !== PROGRAM_ID ||
+    recipientDeposit.user !== RECIPIENT ||
+    recipientDeposit.available !== 0n ||
+    recipientDeposit.locked !== 0n ||
+    paymentAccount.owner !== PROGRAM_ID ||
+    !bytesEqual(payment.paymentId, PAYMENT_ID) ||
+    payment.sender !== AUTHORITY ||
+    payment.recipient !== RECIPIENT ||
+    payment.amount !== 0n ||
+    payment.initialized ||
+    paymentPermissionAccount.owner !== PERMISSION_PROGRAM_ID ||
+    authorityAccount.owner !== SYSTEM_PROGRAM
+  ) {
+    throw new Error("Finalized bootstrap verification failed financial state checks");
+  }
+  console.log(
+    json({
+      finalizedTransaction: {
+        cluster: "Solana Devnet",
+        signature,
+        finalizedReadSlot: finalized.context.slot,
+        feePayer: AUTHORITY,
+        senderWalletRawUsdc: wallet.amount,
+        vaultRawUsdc: vaultToken.amount,
+        vaultLiability: vault.totalLiability,
+        senderAvailable: senderDeposit.available,
+        senderLocked: senderDeposit.locked,
+        recipientDeposit: addresses.recipientDeposit,
+        recipientAvailable: recipientDeposit.available,
+        payment: addresses.payment,
+        paymentAmount: payment.amount,
+        paymentInitialized: payment.initialized,
+        paymentPermission: addresses.paymentPermission,
+        recipientPermissionCreated: false,
+        authorityLamports: authorityAccount.lamports,
+      },
+    }),
+  );
+}
+
+if (!SEND_REQUESTED) {
+  await simulatePaymentBootstrap();
+} else {
+  if (!process.argv.includes(APPROVAL_FLAG)) {
+    throw new Error(`Refusing to sign or send without ${APPROVAL_FLAG}`);
+  }
+  await sendApprovedBootstrap();
+}

@@ -212,3 +212,21 @@ Recipient available/locked: absent -> 0/0
 Signed: false
 Broadcast: false
 ```
+
+After explicit approval, the guarded client repeated the unsigned checks, loaded only the sender signer, and passed a signature-verified simulation before submission.
+
+```text
+Signed preflight error: null
+Signed preflight compute units: 64,643
+Finalized transaction: 2mNPFCiSwy86BjdbxUpsWRSBCtkG2oLgyyFVD9sjxixvQ95UKNyWG9KDjcBRUprnvkwpZn92nsooCdrjU31LQQTe
+Finalized verification slot: 495548220
+Authority balance: 6.73589372 SOL -> 6.72931520 SOL
+Sender wallet test USDC: 20.000000 -> 17.000000
+Vault test USDC/liability: 0 -> 3.000000
+Sender available/locked: 0/0 -> 3.000000/0
+Recipient available/locked: absent -> 0/0
+Payment amount/initialized: 0 / false
+Recipient Deposit permission created: false
+```
+
+The independent CLI confirmation finalized and the Payment transaction history returned the same signature. The live client revalidated all token, Vault, Deposit, Payment, permission-owner, and relationship fields after finalization.

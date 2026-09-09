@@ -42,6 +42,7 @@
     "p4:simulate:timing-policy": "tsx scripts/p4-update-timing-policy.ts",
     "p4:send:timing-policy": "tsx scripts/p4-update-timing-policy.ts --send --approved-p4-timing-policy",
     "p4:simulate:payment-bootstrap": "tsx scripts/p4-simulate-payment-bootstrap.ts",
+    "p4:send:payment-bootstrap": "tsx scripts/p4-simulate-payment-bootstrap.ts --send --approved-p4-payment-bootstrap",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
