@@ -2019,3 +2019,39 @@ Transaction broadcast: false
 ```
 
 The public-after-commit result remains unproven. The next checkpoint requires separate approval for sender TEE authentication and signature-verified simulation only. Broadcast must remain behind another approval after the simulation output is reviewed.
+
+## Version-2.1 terminal closeout signed simulation
+
+After explicit approval, the sender reauthenticated and the runner validated the exact live terminal Payment, terminal commitment, sender Deposit, owner-only Deposit boundary, 3 test-USDC vault, public delegated shells, and unauthenticated denial. It then signed `commit_and_undelegate_payment` and submitted it only to signature-verified simulation.
+
+The simulation succeeded at slot `301175477`, used 39,402 compute units, and returned the same 245 redacted Payment bytes under the expected transitional Delegation Program owner. The instruction commits only Payment, excludes both aggregate Deposits and the Payment Permission, contains no SPL Token instruction, and moves no USDC. Logs contained neither the original amount nor memo hash.
+
+Fresh reads after simulation confirmed that the private Payment and sender Deposit bytes, public delegated accounts, vault collateral, and unauthenticated denial were unchanged.
+
+```text
+Private ER: https://devnet-tee.magicblock.app
+Sender / fee payer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Payment: AvZwmKkHPvrTHk3qyYCeuTAg2jSSrYM9tLEm4gKUD759
+Prepared, unbroadcast signature: 3wRQggytgA2ooYtoUXTybBrn2LC6pm4Qqh7RQAGUPNF8QPbabC9DZEn68v7pejGi3MyvGCh7fGrVYA37yx7gUsNF
+Private pre-state slot: 301175452
+Signed simulation slot: 301175477
+Transaction size: 320 bytes
+Compute units: 39,402
+Simulation error: none
+Payment status / redacted / escrow: Expired / true / 0
+Terminal commitment matches: true
+Payment bytes changed: false
+Sender available / nonce: 2.000000 test USDC / 5
+Recipient Deposit visible to sender: false
+Committed accounts: Payment only
+Aggregate Deposits or Payment Permission included: false
+SPL Token instructions / USDC movement: none / zero
+Protected amount or memo found in logs: false
+Public state / vault changed: false / false
+Unauthenticated protected reads: all null
+Bearer token printed or stored: false
+Hardware attestation independently verified: false
+Transaction broadcast: false
+```
+
+The final Phase 4 onchain mutation is still gated: broadcast this Payment-only closeout only after separate approval, then independently verify the public redacted bytes and that both aggregate Deposits remain delegated.

@@ -98,6 +98,7 @@
     "p4:v21:preflight:expiry-retry-safety": "tsx scripts/p4-v21-expiry-retry-safety.ts",
     "p4:v21:auth:simulate:expiry-retry-safety": "tsx scripts/p4-v21-expiry-retry-safety.ts --approved-p4-v21-expiry-tee-auth-retry-safety-simulation",
     "p4:v21:preflight:closeout": "tsx scripts/p4-v21-closeout-preflight.ts",
+    "p4:v21:auth:simulate:closeout": "tsx scripts/p4-v21-auth-simulate-closeout.ts --approved-p4-v21-expiry-tee-auth-closeout-simulation",
     "p4:legacy:diagnose:expired-schedule": "tsx scripts/p4-auth-simulate-expired-schedule.ts --approved-p4-tee-auth-expired-schedule-simulation",
     "p4:auth:simulate:expired-cancel": "tsx scripts/p4-auth-simulate-expired-cancel.ts --approved-p4-tee-auth-expired-cancel-simulation",
     "p4:send:expired-cancel": "tsx scripts/p4-auth-simulate-expired-cancel.ts --approved-p4-tee-auth-expired-cancel-simulation --send --approved-p4-expired-payment-cancellation",

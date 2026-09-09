@@ -176,7 +176,7 @@ The public Payment Permission has three members: the Protected Pay program with 
 
 The unauthenticated Private ER returned `null` for the Payment and both Deposit accounts while leaving the public Permission readable. Its unauthenticated view of the known sender recovery transaction exposed only the signature, slot, block time, and successful status; it returned zero account keys, instructions, logs, pre-balances, and post-balances. This verifies that amount, memo hash, live state and deadlines, task ID, and user balances remain protected through this RPC boundary while delegated.
 
-The prepared `commit_and_undelegate_payment` transaction is 320 bytes and requires only the sender as fee payer/signer. It contains no SPL Token instruction, moves no USDC, and commits only the already-redacted Payment. It does not include either aggregate Deposit or the Payment Permission. Based on the independently verified private terminal bytes, commitment is expected to publish sender, payment ID, mint, `Expired` status, initialization/redaction/version fields, and the terminal commitment. Recipient, amount, memo hash, timestamps, task ID, and both aggregate balances should remain absent. This post-commit disclosure is a prediction until authenticated simulation and a separately approved live commitment prove it.
+The prepared `commit_and_undelegate_payment` transaction is 320 bytes and requires only the sender as fee payer/signer. It contains no SPL Token instruction, moves no USDC, and commits only the already-redacted Payment. It does not include either aggregate Deposit or the Payment Permission. Based on the independently verified private terminal bytes, commitment is expected to publish sender, payment ID, mint, `Expired` status, initialization/redaction/version fields, and the terminal commitment. Recipient, amount, memo hash, timestamps, task ID, and both aggregate balances should remain absent.
 
 Reproducible no-sign audit:
 
@@ -185,3 +185,29 @@ NO_DNA=1 npm run p4:v21:preflight:closeout
 ```
 
 No keypair was loaded, no authentication message or transaction was signed, and no transaction was broadcast.
+
+### Authenticated terminal-closeout simulation
+
+After explicit approval, the sender authenticated to the Private ER and signed the terminal closeout for signature-verified simulation only. The 320-byte transaction succeeded at Private ER slot `301175477`, consumed 39,402 compute units, produced the expected scheduled-commit receipt, and returned the Payment under the transitional Delegation Program owner. Its 245 data bytes were identical to the verified redacted terminal state: `Expired`, zero escrow and sensitive fields, and the exact terminal commitment.
+
+Neither Deposit nor the Payment Permission was included. Logs contained neither the original `1,000,000` raw-unit amount nor the memo hash. Fresh authenticated, public, vault, and unauthenticated reads proved that simulation persisted no state and weakened no access boundary.
+
+```text
+Sender / fee payer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Prepared, unbroadcast signature: 3wRQggytgA2ooYtoUXTybBrn2LC6pm4Qqh7RQAGUPNF8QPbabC9DZEn68v7pejGi3MyvGCh7fGrVYA37yx7gUsNF
+Simulation slot: 301175477
+Transaction size: 320 bytes
+Compute units: 39,402
+Simulation error: none
+Committed account: Payment only
+Payment bytes changed: false
+Terminal commitment matches: true
+Aggregate Deposits included: false
+SPL Token instructions / USDC movement: none / zero
+Original amount or memo hash in logs: false
+Public or private state persisted: false
+Unauthenticated protected reads: all null
+Transaction broadcast: false
+```
+
+The public-after-commit result is still a prediction. It requires a separately approved broadcast followed by finalized public byte and delegation-topology verification.
