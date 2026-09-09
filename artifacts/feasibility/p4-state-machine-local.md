@@ -711,3 +711,33 @@ Broadcast: false
 ```
 
 This proves that the upgraded program creates version-2 shells and that the cheapest safe fixture path can reuse the already onboarded users. The shell necessarily reveals sender, recipient, mint, and Payment address on Solana L1; the amount, memo, timestamps, and active status remain zero/uninitialized until the later private open. A separate sender approval is required before this bootstrap can be signed and broadcast.
+
+## Version-2 settlement bootstrap broadcast
+
+After explicit approval, the guarded client repeated the complete unsigned pre-state check, then loaded only the approved sender signer. It signed a fresh transaction, simulated those exact wire bytes with signature verification enabled, submitted the same transaction, waited for finalization, and decoded the resulting accounts again.
+
+```text
+Unsigned finalized pre-state slot: 495660207
+Signature-verified simulation slot: 495660245
+Finalized verification slot: 495660270
+Finalized transaction: CJmjsbgZAsEUXK7o3H5LNKzUwstpjSxW98R8oK4XpkLESZB6dKj8vifVJ2fuUmfEV3YEdeP9jU3pyeqyDG8Cnve
+Sender and fee payer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Recipient recorded in shell: HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr
+Payment: 83JoRQii6JKQV5hziNgrrpoYmrzTom8h25gSVWEGpjNK
+Payment permission: 3phccDv3mz1jPfHqPcF5qW83hB46M2tcAazqNDtWmvnU
+Instructions: prepare_payment, create_payment_permission
+Payment version: 2
+Payment amount/initialized: 0 / false
+Signature verification: passed
+Simulation error: null
+Compute units consumed: 27,814
+Transaction fee: 5,000 lamports
+Fee plus new-account rent: 5,430,440 lamports
+Authority balance: 6.71839352 SOL -> 6.71296308 SOL
+USDC moved: 0
+SOL transferred: 0
+Existing private Deposits mutated: false
+Independent Solana CLI confirmation: Finalized
+```
+
+The version-2 settlement fixture is now ready for delegation. Because both users and their owner-only Deposit permissions were already onboarded, the next transaction should delegate only this new Payment and its permission. It must not redelegate or expose either aggregate Deposit.
