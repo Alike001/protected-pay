@@ -4,7 +4,7 @@ Date: 2026-09-09
 
 ## Result
 
-**LOCAL PASS / LIVE PENDING**
+**LOCAL PASS / LIVE UPGRADE PASS / PAYMENT FLOW PENDING**
 
 The Anchor program now implements the complete protected-payment lifecycle:
 
@@ -65,19 +65,16 @@ SHA-256: e12298b94a74a7113cde7cd0334fc0e6145e6482eda44ab9a336f0a39286d14a
 - terminal redaction is one-way and idempotent;
 - total internal liability is conserved across internal payment transitions.
 
-## Not yet proven
+## Remaining live proofs
 
-This artifact is not Devnet transaction evidence. Before Phase 5:
+Before Phase 5:
 
-1. simulate the program upgrade and calculate exact Devnet rent/fees;
-2. update the existing Config timing policy from the feasibility values to 60/300 seconds;
-3. create and delegate a real Payment shell and recipient Deposit/permissions;
-4. execute open, acknowledge, cancel, settle, and expiry through the authenticated Private ER;
-5. prove a real five-run Crank task advances a Payment with both users offline;
-6. re-run the unauthorized-read and public metadata audit for the Payment layout;
-7. redact, commit/undelegate, and verify final public state before withdrawal.
-
-No program upgrade or transaction was signed or sent during this local phase.
+1. update the existing Config timing policy from the feasibility values to 60/300 seconds;
+2. create and delegate a real Payment shell and recipient Deposit/permissions;
+3. execute open, acknowledge, cancel, settle, and expiry through the authenticated Private ER;
+4. prove a real five-run Crank task advances a Payment with both users offline;
+5. re-run the unauthorized-read and public metadata audit for the Payment layout;
+6. redact, commit/undelegate, and verify final public state before withdrawal.
 
 ## Read-only Devnet upgrade preflight
 
@@ -114,4 +111,38 @@ ProgramData: 2.45134892 SOL -> 3.22736972 SOL (simulated only)
 
 The newer `ExtendProgramChecked` variant was first tested and rejected by the current Devnet loader as invalid instruction data. No broadcast occurred. The successful simulation uses the legacy `ExtendProgram` wire instruction used by the installed CLI; the script still independently checks the stored upgrade authority before signing.
 
-The live program remains unchanged at 482,376 bytes. The actual upgrade remains funding-blocked because the refundable 3.22732908 SOL upload buffer cannot be created from the current 2.51507452 SOL authority balance. At least approximately 1.48827536 additional SOL plus fees is still required.
+This initial simulation was funding-blocked at the time. The later funded and live result is recorded below.
+
+## Funded simulation and live Devnet upgrade
+
+The authority was manually funded to 7.51507452 SOL. The signed extension simulation was repeated against that balance and passed without broadcast:
+
+```text
+Simulation error: null
+Signature verification: passed
+Transaction broadcast: false
+Additional bytes: 152,760
+Compute units consumed: 2,520
+Estimated fee: 5,000 lamports
+Authority: 7.51507452 SOL -> 6.73904872 SOL (simulated only)
+ProgramData: 2.45134892 SOL -> 3.22736972 SOL (simulated only)
+```
+
+The approved live deployment first extended ProgramData and created the upload buffer, then the public Devnet endpoint exhausted its write retries. The program remained recoverable: the buffer contained the full 635,136-byte allocation and 3.22736972 SOL of refundable rent. Deployment was resumed through a Devnet endpoint using the recovered one-time buffer signer.
+
+```text
+Cluster genesis hash: EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG (Devnet)
+Program: w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk
+ProgramData: BXX67CiW14MVLku97gfUm4muQKwUc7uDsSrbC9qsYRAj
+Upgrade authority: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Upgrade transaction: 37vY1ceQ2xiAT4v1jBsHYLXMmkTx8XpiYLCfEt9wKMz7c5bAUJ5a31EpApTvoWT97Sx5pY1ARLXYZEpnkQtDJf1a
+Confirmed slot: 495532661
+ProgramData allocation: 635,136 bytes
+ProgramData rent balance: 3.22736972 SOL
+Authority balance after buffer refund: 6.73589872 SOL
+On-chain SHA-256: e12298b94a74a7113cde7cd0334fc0e6145e6482eda44ab9a336f0a39286d14a
+Local SHA-256:    e12298b94a74a7113cde7cd0334fc0e6145e6482eda44ab9a336f0a39286d14a
+Remaining authority-owned buffers: none
+```
+
+The dumped on-chain bytecode and local optimized artifact were both 635,136 bytes and matched byte-for-byte by SHA-256. The temporary buffer was consumed and closed, its rent was refunded, and all temporary recovered key files were deleted from the in-memory temporary directory.
