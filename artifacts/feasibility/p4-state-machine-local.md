@@ -1151,3 +1151,49 @@ Transaction broadcast: false
 ```
 
 The preflight deliberately cannot claim that the current private state is unchanged: that fact is hidden from unauthenticated readers by the permission boundary. The next separately approved checkpoint must authenticate the exact sender, validate the live Payment remains expired-but-`Created` with 1 test USDC escrowed, and run a signature-verified simulation proving `Created -> Expired -> claimed/redacted` plus sender available balance `2 -> 3` test USDC. Broadcast remains a further separate approval.
+
+## Version-2.1 stalled-payment atomic recovery simulation
+
+After explicit approval, the sender authenticated to MagicBlock's Query Filtering Service with a fresh wallet challenge. The guarded client retained the returned token only in memory, validated the exact authenticated identity, and fetched only the Payment and sender Deposit the sender is permitted to read. The recipient Deposit remained inaccessible to the sender.
+
+The protected state matched the recorded failed-schedule outcome exactly: the Payment remained version 2 and `Created`, its task ID was unchanged, its immutable expiry was more than 10,000 seconds in the past, 1 test USDC remained in individual escrow, and the sender had 2 test USDC available with nothing in the legacy aggregate `locked` field.
+
+The client signed one transaction containing `advance_payment` followed by `claim_payment` and submitted it only to `simulateTransaction` with signature verification enabled. The simulated advance changed `Created -> Expired`; the immediately following sender claim credited the exact escrow amount, zeroed the sensitive terminal terms, and stored the expected commitment. Because both instructions share one transaction, either both state changes persist or neither does.
+
+```text
+Private ER: https://devnet-tee.magicblock.app
+Authenticated identity: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Payment: 83JoRQii6JKQV5hziNgrrpoYmrzTom8h25gSVWEGpjNK
+Task ID: 1788965539251
+Observed at: 1788976544
+Expires at: 1788965841
+Expired by: 10,703 seconds
+Private status before: Created
+Private Payment escrow before: 1.000000 test USDC
+Instructions: advance_payment, claim_payment
+Atomic transaction: true
+Recipient signature required: false
+Recipient Deposit included: false
+Serialized transaction size: 298 bytes
+Prepared, unbroadcast signature: 5YiL6jjE87DQZxZ89E2RczDjKxH9FgiuUsf1L91hrTbgieie7nPQZV1KHpcmnRdrQwsfnSwzikubj4NLwBTHSvDm
+Signed simulation slot: 300863282
+Signature verification: passed
+Simulation error: none
+Compute units consumed: 16,043
+Payment status after simulation: Expired
+Payment redacted after claim: true
+Terminal commitment matches: true
+Sender available: 2.000000 -> 3.000000 test USDC
+Sender locked: 0 -> 0
+SPL token movement: none; private accounting only
+Protected amount or memo hash in logs: false
+Private state persisted after simulation: false
+Public state changed after simulation: false
+Vault balance changed after simulation: false
+Unauthenticated protected reads: all null
+Bearer token printed or persisted: false
+Hardware attestation independently verified: false
+Transaction broadcast: false
+```
+
+The simulation proves the exact existing escrow can be recovered without recipient cooperation and without an intermediate partial state. A separate explicit approval is required to authenticate again, sign a fresh transaction, simulate those fresh wire bytes, and broadcast them to the Private ER.
