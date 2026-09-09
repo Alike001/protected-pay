@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   appendTransactionMessageInstructions,
@@ -576,11 +578,17 @@ async function sendApprovedBootstrap() {
   );
 }
 
-if (!SEND_REQUESTED) {
-  await simulateBootstrap();
-} else {
-  if (!process.argv.includes(APPROVAL_FLAG)) {
-    throw new Error(`Refusing to sign or send without ${APPROVAL_FLAG}`);
+const IS_MAIN =
+  process.argv[1] !== undefined &&
+  fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+
+if (IS_MAIN) {
+  if (!SEND_REQUESTED) {
+    await simulateBootstrap();
+  } else {
+    if (!process.argv.includes(APPROVAL_FLAG)) {
+      throw new Error(`Refusing to sign or send without ${APPROVAL_FLAG}`);
+    }
+    await sendApprovedBootstrap();
   }
-  await sendApprovedBootstrap();
 }

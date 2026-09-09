@@ -741,3 +741,34 @@ Independent Solana CLI confirmation: Finalized
 ```
 
 The version-2 settlement fixture is now ready for delegation. Because both users and their owner-only Deposit permissions were already onboarded, the next transaction should delegate only this new Payment and its permission. It must not redelegate or expose either aggregate Deposit.
+
+## Version-2 settlement delegation simulation
+
+The dedicated delegation client validated the finalized version-2 shell and permission, the Config and timing policy, both already-delegated user Deposits and permissions, all required MagicBlock programs, the configured Private ER validator, the fee payer, and the absence of all six proposed delegation accounts. It then simulated only Payment-permission and Payment delegation with a no-op signer.
+
+```text
+Finalized pre-state slot: 495662432
+Simulation slot: 495662470
+Payment: 83JoRQii6JKQV5hziNgrrpoYmrzTom8h25gSVWEGpjNK
+Payment permission: 3phccDv3mz1jPfHqPcF5qW83hB46M2tcAazqNDtWmvnU
+Instructions: delegate Payment permission, delegate Payment
+Writable financial accounts: Payment only
+Sender Deposit included in instructions: false
+Recipient Deposit included in instructions: false
+Sender signature required: yes
+Recipient signature required: no
+Transaction size: 701 bytes
+Simulation error: null
+Compute units consumed: 102,243
+Estimated fee: 5,000 lamports
+Delegation-account rent: 4,612,640 lamports
+Estimated fee plus rent: 4,617,640 lamports
+USDC moved: 0
+User-to-user SOL transfer: 0
+Payment and permission owner after simulation: MagicBlock Delegation Program
+Payment, permission, sender Deposit, and recipient Deposit data unchanged: true
+Signed: false
+Broadcast: false
+```
+
+This is the corrected version-2 permission topology in a real Devnet simulation: automation receives access to the individual Payment but no instruction grants access to either user's aggregate Deposit. A separate sender approval is required before the same guarded flow may sign and broadcast the delegation.
