@@ -1941,3 +1941,48 @@ Transactions broadcast: false
 ```
 
 The next checkpoint requires explicit approval to authenticate the sender and sign both simulation-only transactions. The runner contains no send path and will reject `--send` unconditionally.
+
+## Version-2.1 expiry retry-safety simulations
+
+After explicit approval, the retry runner authenticated the sender and independently revalidated the live terminal Payment, its terminal commitment, sender Deposit, owner-only permission boundary, public delegated shells, 3 test-USDC vault collateral, and outsider denial. It signed two separate transactions and submitted each only to signature-verified simulation.
+
+The repeated `advance_payment` simulation succeeded and returned a byte-identical Payment, proving terminal Crank execution is a no-op even after redaction. The duplicate `claim_payment` simulation failed at the program's `PaymentRedacted` guard with custom error `6022`, before any Deposit credit. The Private ER encodes simulation error indexes and custom codes as decimal strings, so the response validator normalizes only those two fields to numbers before exact comparison.
+
+Fresh post-simulation reads confirmed that Payment and sender Deposit bytes were unchanged, the sender still had 2 test USDC available, the recipient Deposit was not visible or included, public state and vault collateral were unchanged, and unauthenticated reads remained null. The runner has no broadcast path.
+
+```text
+Private ER: https://devnet-tee.magicblock.app
+Sender / fee payer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Payment: AvZwmKkHPvrTHk3qyYCeuTAg2jSSrYM9tLEm4gKUD759
+Terminal pre-state slot: 301148392
+Payment status / redacted / escrow: Expired / true / 0
+Terminal commitment matches: true
+Sender available before: 2.000000 test USDC
+Sender nonce: 5
+Recipient Deposit visible to sender: false
+Repeated advance prepared signature: 42veZLL7dw2gYQ3MvXHoHQ4ndNrMVQm4gv6N1GvzSDk3GdFH7aUgDsmQCAkaV1VGU31VXJ963Vfwiy7A8FbgVGDW
+Repeated advance transaction size: 252 bytes
+Repeated advance simulation slot: 301148411
+Repeated advance error: none
+Repeated advance compute units: 5,991
+Repeated advance state change: none; byte-for-byte no-op
+Duplicate claim prepared signature: 5t6K6asghqQj3cyjz3XV1Y8Q2BeYo5aEY8TLnmcigXp5qBPERehTKNaZyRshqd9ux8PAWzeJzqFhKXbkwDqbWSbd
+Duplicate claim transaction size: 286 bytes
+Duplicate claim simulation slot: 301148425
+Duplicate claim expected error: PaymentRedacted (6022)
+Duplicate claim error matched: true
+Duplicate claim sender balance change: none
+Recipient Deposit included: false
+Payment bytes changed after simulations: false
+Sender Deposit bytes changed after simulations: false
+Sender available after: 2.000000 test USDC
+SPL token movement: none
+Public state changed: false
+Vault balance changed: false
+Unauthenticated protected reads: all null
+Bearer token printed or persisted: false
+Hardware attestation independently verified: false
+Transactions broadcast: false
+```
+
+This completes the live state-machine retry proof: automated calls are harmless after terminal resolution, and the value-moving claim cannot execute twice. The remaining Phase 4 work is the corrected-layout privacy audit and a terminal commit/undelegate proof.

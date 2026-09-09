@@ -143,7 +143,7 @@ function isPaymentRedactedError(error: unknown): boolean {
   }
   const instructionError = (error as { InstructionError: unknown })
     .InstructionError;
-  if (!Array.isArray(instructionError) || instructionError[0] !== 1) {
+  if (!Array.isArray(instructionError) || Number(instructionError[0]) !== 1) {
     return false;
   }
   const custom = instructionError[1];
@@ -151,7 +151,7 @@ function isPaymentRedactedError(error: unknown): boolean {
     !!custom &&
     typeof custom === "object" &&
     "Custom" in custom &&
-    (custom as { Custom: unknown }).Custom === PAYMENT_REDACTED_ERROR
+    Number((custom as { Custom: unknown }).Custom) === PAYMENT_REDACTED_ERROR
   );
 }
 
