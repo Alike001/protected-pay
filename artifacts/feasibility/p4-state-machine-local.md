@@ -1274,3 +1274,33 @@ Broadcast: false
 ```
 
 This checkpoint proves only safe construction and base-Devnet account creation behavior. A separate approval is required to load the sender signer, rerun signature-verified simulation with a fresh blockhash, and broadcast the shell/permission creation. Delegation, private open plus six-call scheduling, recipient acknowledgement, automated settlement, and recipient claim remain later gated steps.
+
+## Version-2.1 fresh settlement bootstrap broadcast
+
+After separate explicit approval, the guarded runner repeated the complete unsigned preflight, loaded only the exact sender signer, and built a fresh transaction. Signature-verified simulation of those exact wire bytes passed before they were submitted to Solana Devnet. The transaction finalized and created only the intended Payment shell and its Permission Program account.
+
+```text
+Cluster: Solana Devnet
+Finalized signature: 3AMDDLtUyyVLtDTHmwjM5VCgPmLNxroTUuqibyfJyD9HzYrxUsT5QvSZ3rEdfrFMFCDWMKdGfK4chFnqWBhye4QW
+Finalized readback slot: 495768718
+Sender and fee payer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Payment: 71t8qrKg2cFVSceBEFL4RtmKrfhRcMWzyvq4yh4PwikZ
+Payment permission: CAjEn5BnHunwprwxHSoANJLCGBDkMt1YKTeqnbtVi9bP
+Instructions: prepare_payment, create_payment_permission
+Signed simulation error: none
+Signed simulation compute units: 27,814
+Transaction fee: 5,000 lamports
+Payment rent: 1,894,840 lamports
+Permission rent: 3,530,600 lamports
+Total fee plus rent: 5,430,440 lamports
+Authority balance after: 6.698695 SOL
+Payment owner / allocation: Protected Pay / 245 bytes
+Permission owner / allocation: Permission Program / 567 bytes
+Payment version / amount / initialized: 2 / 0 / false
+USDC moved: 0
+Private Deposits mutated: false
+Recipient signature required: false
+Independent CLI confirmation: finalized
+```
+
+Independent CLI account reads confirmed the exact owners and allocations after finalization. The Payment shell publicly names sender, recipient, and token mint by design, but contains no private amount, memo, timing, task, or opened-state values. The next checkpoint is an unsigned delegation simulation targeting the configured Private ER validator; delegation broadcast remains separately gated.
