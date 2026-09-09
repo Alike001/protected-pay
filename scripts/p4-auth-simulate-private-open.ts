@@ -53,6 +53,9 @@ import { authenticatePrivateEr, PRIVATE_ER_ORIGIN } from "./private-er-auth.ts";
 
 const BASE_RPC_URL = "https://api.devnet.solana.com" as const;
 const APPROVAL_FLAG = "--approved-p4-tee-auth-private-open-simulation";
+const SEND_REQUESTED = process.argv.includes("--send");
+const SEND_APPROVAL_FLAG = "--approved-p4-private-payment-open";
+const MAX_CONFIRMATION_POLLS = 120;
 const RECIPIENT =
   "HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr" as Address;
 const PAYMENT_ID = new Uint8Array(
@@ -90,6 +93,10 @@ function json(value: unknown): string {
     (_key, item: unknown) => (typeof item === "bigint" ? item.toString() : item),
     2,
   );
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function bytesEqual(
@@ -140,8 +147,8 @@ async function permissionPda(protectedAccount: Address) {
 if (!process.argv.includes(APPROVAL_FLAG)) {
   throw new Error(`Refusing to sign TEE authentication without ${APPROVAL_FLAG}`);
 }
-if (process.argv.includes("--send")) {
-  throw new Error("This approved checkpoint is simulation-only; --send is forbidden");
+if (SEND_REQUESTED && !process.argv.includes(SEND_APPROVAL_FLAG)) {
+  throw new Error(`Refusing to send the private Payment open without ${SEND_APPROVAL_FLAG}`);
 }
 const keypairPath = process.env.SOLANA_KEYPAIR_PATH;
 if (!keypairPath) {
@@ -620,3 +627,205 @@ console.log(
     },
   }),
 );
+
+if (SEND_REQUESTED) {
+  const submittedSignature = await privateRpc
+    .sendTransaction(wire, {
+      encoding: "base64",
+      maxRetries: 5n,
+      preflightCommitment: "confirmed",
+      skipPreflight: false,
+    })
+    .send();
+  if (submittedSignature !== preparedSignature) {
+    throw new Error(
+      "Private ER returned a signature different from the signed Payment open",
+    );
+  }
+
+  let confirmation:
+    | {
+        slot: bigint;
+        confirmationStatus?: "processed" | "confirmed" | "finalized";
+        err: unknown;
+      }
+    | undefined;
+  for (let poll = 0; poll < MAX_CONFIRMATION_POLLS; poll += 1) {
+    const response = await privateRpc
+      .getSignatureStatuses([preparedSignature], {
+        searchTransactionHistory: true,
+      })
+      .send();
+    const status = response.value[0];
+    if (status?.err) {
+      throw new Error(`Private Payment open failed after submission: ${json(status.err)}`);
+    }
+    if (
+      status?.confirmationStatus === "confirmed" ||
+      status?.confirmationStatus === "finalized"
+    ) {
+      confirmation = {
+        slot: status.slot,
+        confirmationStatus: status.confirmationStatus,
+        err: status.err,
+      };
+      break;
+    }
+    const blockHeight = await privateRpc
+      .getBlockHeight({ commitment: "confirmed" })
+      .send();
+    if (blockHeight > latestBlockhash.lastValidBlockHeight) {
+      throw new Error("Private Payment-open transaction expired before confirmation");
+    }
+    await wait(500);
+  }
+  if (!confirmation) {
+    throw new Error("Private Payment-open confirmation timed out");
+  }
+
+  let confirmedPayment;
+  let confirmedDeposit;
+  for (let poll = 0; poll < 40; poll += 1) {
+    const response = await privateRpc
+      .getMultipleAccounts(
+        [payment, sender.deposit],
+        { commitment: "confirmed", encoding: "base64" },
+      )
+      .send();
+    const [paymentAccount, depositAccount] = response.value;
+    if (
+      paymentAccount?.owner === PROGRAM_ID &&
+      accountBytes(paymentAccount.data).length === PAYMENT_SIZE &&
+      depositAccount?.owner === PROGRAM_ID &&
+      accountBytes(depositAccount.data).length === DEPOSIT_SIZE
+    ) {
+      const decodedPayment = getPaymentDecoder().decode(
+        accountBytes(paymentAccount.data),
+      );
+      const decodedDeposit = getDepositDecoder().decode(
+        accountBytes(depositAccount.data),
+      );
+      assertDiscriminator(
+        decodedPayment.discriminator,
+        PAYMENT_DISCRIMINATOR,
+        "Confirmed Payment",
+      );
+      assertDiscriminator(
+        decodedDeposit.discriminator,
+        DEPOSIT_DISCRIMINATOR,
+        "Confirmed sender Deposit",
+      );
+      if (
+        decodedPayment.initialized &&
+        decodedPayment.amount === PAYMENT_AMOUNT &&
+        decodedDeposit.available === 2_000_000n &&
+        decodedDeposit.locked === PAYMENT_AMOUNT
+      ) {
+        confirmedPayment = decodedPayment;
+        confirmedDeposit = decodedDeposit;
+        break;
+      }
+    }
+    await wait(250);
+  }
+  if (!confirmedPayment || !confirmedDeposit) {
+    throw new Error("Confirmed private Payment open was not visible in authorized readback");
+  }
+  if (
+    !bytesEqual(confirmedPayment.paymentId, PAYMENT_ID) ||
+    confirmedPayment.sender !== AUTHORITY ||
+    confirmedPayment.recipient !== RECIPIENT ||
+    confirmedPayment.tokenMint !== USDC_MINT ||
+    confirmedPayment.createdAt <= 0n ||
+    confirmedPayment.settleAfter - confirmedPayment.createdAt !== 60n ||
+    confirmedPayment.expiresAt - confirmedPayment.createdAt !== 300n ||
+    confirmedPayment.taskId !== 0n ||
+    confirmedPayment.status !== PaymentStatus.Created ||
+    !bytesEqual(confirmedPayment.memoHash, MEMO_HASH) ||
+    !bytesEqual(confirmedPayment.terminalCommitment, ZERO_32) ||
+    confirmedPayment.redacted ||
+    confirmedPayment.version !== 1 ||
+    confirmedDeposit.user !== AUTHORITY ||
+    confirmedDeposit.tokenMint !== USDC_MINT ||
+    confirmedDeposit.nextPaymentNonce !== 2n ||
+    confirmedDeposit.automationPaused ||
+    confirmedDeposit.version !== 1
+  ) {
+    throw new Error("Confirmed private Payment or Deposit failed state validation");
+  }
+
+  const [publicAfterSend, unauthenticatedAfterSend] = await Promise.all([
+    baseRpc
+      .getMultipleAccounts(
+        [payment, sender.deposit, sender.vaultUsdcAta],
+        { commitment: "finalized", encoding: "base64" },
+      )
+      .send(),
+    unauthenticatedRpc
+      .getMultipleAccounts(
+        [payment, sender.deposit, recipientDeposit],
+        { commitment: "confirmed", encoding: "base64" },
+      )
+      .send(),
+  ]);
+  const [publicPaymentAfter, publicDepositAfter, publicVaultAfter] =
+    publicAfterSend.value;
+  if (
+    !publicPaymentAfter ||
+    publicPaymentAfter.owner !== DELEGATION_PROGRAM_ID ||
+    !publicDepositAfter ||
+    publicDepositAfter.owner !== DELEGATION_PROGRAM_ID ||
+    !publicVaultAfter ||
+    publicVaultAfter.owner !== TOKEN_PROGRAM_ID ||
+    !bytesEqual(
+      accountBytes(publicPaymentAfter.data),
+      accountBytes(publicPaymentAccount.data),
+    ) ||
+    !bytesEqual(
+      accountBytes(publicDepositAfter.data),
+      accountBytes(publicSenderDepositAccount.data),
+    ) ||
+    !bytesEqual(
+      accountBytes(publicVaultAfter.data),
+      accountBytes(vaultTokenAccount.data),
+    ) ||
+    unauthenticatedAfterSend.value.some((account) => account !== null)
+  ) {
+    throw new Error("Private Payment open leaked into public or unauthenticated state");
+  }
+
+  console.log(
+    json({
+      confirmedPrivateTransaction: {
+        cluster: "MagicBlock Private ER on Solana Devnet",
+        signature: preparedSignature,
+        confirmation,
+        feePayer: AUTHORITY,
+        instruction: "open_payment",
+        token: "Circle Devnet test USDC",
+        internalAmountLocked: confirmedPayment.amount,
+        splTokenMovement: "none",
+        recipient: confirmedPayment.recipient,
+        createdAt: confirmedPayment.createdAt,
+        settleAfter: confirmedPayment.settleAfter,
+        expiresAt: confirmedPayment.expiresAt,
+        taskId: confirmedPayment.taskId,
+        status: PaymentStatus[confirmedPayment.status],
+        senderAvailable: confirmedDeposit.available,
+        senderLocked: confirmedDeposit.locked,
+        senderNextPaymentNonce: confirmedDeposit.nextPaymentNonce,
+      },
+      privacyAfterSend: {
+        publicPaymentAmount: publicPayment.amount,
+        publicPaymentInitialized: publicPayment.initialized,
+        publicSenderAvailable: publicSenderDeposit.available,
+        publicSenderLocked: publicSenderDeposit.locked,
+        publicVaultRawUsdc: vaultToken.amount,
+        unauthenticatedProtectedReads: "all null",
+        authTokenPrinted: false,
+        authTokenStored: false,
+        hardwareAttestationIndependentlyVerified: false,
+      },
+    }),
+  );
+}

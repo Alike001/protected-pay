@@ -370,3 +370,28 @@ Broadcast: false
 ```
 
 This proves that the actual Payment state machine—not a standalone privacy demo—can privately apply an approved payment amount and memo hash while atomically locking the matching sender balance. It also proves simulation-only safety: the signed transaction was never submitted, and both the private and public pre-state remained unchanged afterward.
+
+After explicit approval to open the real private Payment, the guarded client authenticated again, repeated the privacy and account checks, and passed a fresh signature-verified simulation. It submitted the same signed transaction to the Private ER, polled its signature status to finalization, then validated the authorized private state and the unchanged public and unauthenticated views.
+
+```text
+Public finalized pre-state slot: 495562717
+Private ER simulation slot: 300262532
+Finalized Private ER slot: 300262608
+Finalized Private ER transaction: 4RzCbTmgQJWqPURdPbWDWmeYeYi9YfottkrsWvEgTTS1mrFdXvKuStKse9Zu75VK6JtCECPNHF2tPAheeWEdRZjW
+Created at: 1788946509
+Settle after: 1788946569 (+60 seconds)
+Expires at: 1788946809 (+300 seconds)
+Private Payment amount/status: 1.000000 test USDC / Created
+Private sender available/locked: 2.000000/1.000000 test USDC
+Private sender payment nonce: 2
+SPL token movement: none
+Public Payment amount/initialized: 0/false
+Public sender available/locked: 3.000000/0
+Public vault collateral: 3.000000 test USDC
+Unauthenticated protected reads: all null
+Private ER reported transaction fee: unavailable
+Authentication token printed or persisted: false
+Hardware attestation independently verified: false
+```
+
+The open is now real Private ER state. Its Payment amount, memo hash, and updated balance are visible to authorized members but remain absent from the public base snapshot and unavailable through unauthenticated Private ER reads.
