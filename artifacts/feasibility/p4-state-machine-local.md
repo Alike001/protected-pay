@@ -1344,3 +1344,38 @@ Broadcast: false
 ```
 
 This proves the fresh fixture can enter MagicBlock's delegated topology without granting either user access to the other's aggregate Deposit and without moving payment value. A separate explicit approval is required to load the exact sender signer, rerun signature-verified simulation on fresh wire bytes, and broadcast the delegation to Devnet.
+
+## Version-2.1 fresh settlement delegation broadcast
+
+After separate explicit approval, the guarded runner repeated its full unsigned validation, loaded only the exact sender signer, and built fresh transaction bytes. Signature-verified simulation passed before those same signed bytes were submitted to Solana Devnet. The transaction finalized successfully.
+
+```text
+Cluster: Solana Devnet
+Finalized signature: 2ASiv93UVBXppn616PNHr7wcqPFDFCi3xRvQ2sV99gEUL3s75AArSufC9G7aMRd5nEzDTTRPbVV3cB1nZepPzcn3
+Transaction slot: 495777294
+Finalized runner readback slot: 495777297
+Independent finalized readback slot: 495777386
+Sender and fee payer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Payment: 71t8qrKg2cFVSceBEFL4RtmKrfhRcMWzyvq4yh4PwikZ
+Payment permission: CAjEn5BnHunwprwxHSoANJLCGBDkMt1YKTeqnbtVi9bP
+Instructions: delegate Payment permission, delegate Payment
+Signed simulation error: none
+Compute units consumed: 93,243
+Transaction fee: 5,000 lamports
+Delegation-account rent: 4,612,640 lamports
+Exact fee plus rent: 4,617,640 lamports
+Authority balance: 6.698695 -> 6.69407736 SOL
+Payment owner after: Delegation Program
+Payment-permission owner after: Delegation Program
+Temporary delegation buffers closed: true
+Persistent delegation records and metadata present: true
+Payment version / amount / initialized: 2 / 0 / false
+Sender Deposit included in transaction: false
+Recipient Deposit included in transaction: false
+Both existing Deposits remain delegated: true
+Financial data changed: false
+USDC moved: 0
+Transaction status: finalized
+```
+
+The corrected settlement fixture is now ready for Private ER execution. The next separately approved checkpoint must authenticate the sender and run a signed, non-broadcast simulation of the atomic private open plus the corrected six-iteration Crank schedule; no private value should persist until a later broadcast approval.
