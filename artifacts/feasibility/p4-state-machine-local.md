@@ -540,3 +540,38 @@ Authority balance: 6.72221852 SOL
 Signature requested: no
 Transaction broadcast: no
 ```
+
+## Version-2 Devnet signed upgrade simulation
+
+After explicit approval, a guarded simulation-only client loaded the approved upgrade-authority signer and revalidated the complete public loader relationship before signing: the executable Program owner and discriminator, its linked ProgramData address, the ProgramData owner and discriminator, the stored upgrade authority, and the authority system account. It also pinned the exact reviewed artifact by SHA-256 and rejected any `--send` argument.
+
+Because Solana RPC simulations do not persist account state between transactions, an exact final `Upgrade` instruction cannot succeed until a real upload buffer exists. The signed transaction therefore exercised the maximum honest non-persistent preflight: it created a full-size ephemeral loader buffer, initialized it under the approved authority, and wrote the first 512 bytes of the reviewed version-2 artifact in one transaction.
+
+```text
+Cluster: Solana Devnet
+Program: w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk
+ProgramData: BXX67CiW14MVLku97gfUm4muQKwUc7uDsSrbC9qsYRAj
+Fee payer and upgrade authority: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Binary size: 633,568 bytes
+Binary SHA-256: 5b2f04b8b347a85e5f7f03dc9305709aaaab7fb538738d348919a8811756d6f5
+Deployed capacity: 635,136 bytes
+Headroom: 1,568 bytes
+Simulated buffer allocation: 633,605 bytes
+Temporary buffer rent: 3.21936364 SOL (refundable after upgrade)
+Artifact-prefix write tested: 512 bytes
+Prepared, unbroadcast signature: 4BLDwgPhBwhatAxrYxanuuypbgn4kV3vLNT8PtYMbojuKdSy8n5uZs7A98bQyaFc836mqERJHEt8cp4uiGNtivME
+Signature verification: passed
+Simulation error: null
+Compute units consumed: 4,890
+Estimated fee: 10,000 lamports (0.00001 SOL)
+Authority balance before simulation: 6.72221852 SOL
+Authority balance after simulation-only follow-up: 6.72221852 SOL
+Prepared signature found on Devnet: no
+Ephemeral simulated buffer found on Devnet: no
+Persistent buffer creation: not attempted
+Full bytecode upload: not attempted
+Upgrade instruction: not attempted
+Program mutation: none
+```
+
+This passes the signed authority, funding, loader-buffer allocation, initialization, and bytecode-write-path checks without changing Devnet. The remaining dependency is structural rather than a failed test: a separately approved real buffer upload is required before the exact signed `Upgrade` transaction can be simulated against Devnet. The eventual upgrade broadcast must remain a third, separately approved action after that exact simulation passes.
