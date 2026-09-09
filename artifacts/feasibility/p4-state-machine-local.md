@@ -989,4 +989,32 @@ Transactions signed: none
 Transactions broadcast: none
 ```
 
-The next deployment gate is a signature-verified, non-broadcast simulation of upgrading the existing Devnet program to this exact binary. The current escrow is not modified by the local correction.
+The next deployment sequence is a separately approved full-bytecode Buffer upload, followed by a signature-verified non-broadcast upgrade simulation and then a separately approved broadcast. The current escrow is not modified by the local correction.
+
+## Version-2.1 exact-upgrade prerequisite preflight
+
+The approved action was an exact signed upgrade simulation only. Solana's upgradeable loader requires that instruction to consume an already initialized, fully uploaded on-chain Buffer. The previous version-2 buffer was consumed and closed during its successful upgrade, and a fresh read-only Devnet query found no buffers owned by the upgrade authority.
+
+```text
+Cluster: Solana Devnet
+Program: w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk
+ProgramData: BXX67CiW14MVLku97gfUm4muQKwUc7uDsSrbC9qsYRAj
+Upgrade authority: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Current authority balance: 6.70834544 SOL
+Authority-owned buffers: none
+ProgramData capacity: 635,136 bytes
+Version-2.1 binary length: 633,568 bytes
+Unused ProgramData capacity: 1,568 bytes
+ProgramData extension required: no
+Required new Buffer allocation: 633,605 bytes including loader metadata
+Required refundable Buffer rent: 3.21936364 SOL
+Local version-2.1 SHA-256: e7998fcd2c85f5accead0ba7e6317dfb6bfebed210ea1d18a0b622047d4f78f1
+Current deployed 635,136-byte SHA-256: 7a3391683d118bf58d2b6d9c95f68782facd06a0e0ff00fe011a0fa150fd7e0b
+Local binary padded to 635,136 bytes SHA-256: e259019a7411cd56469a36dd46eb658a274985a255569e579a8b3ebe7c1369d4
+Current deployment already matches version 2.1: false
+Transactions constructed: none
+Transactions signed: none
+Transactions broadcast: none
+```
+
+The exact simulation cannot be performed honestly by chaining non-persistent simulations: the 633,568-byte artifact cannot fit in one Solana transaction, and one simulation's Buffer writes are not visible to the next. Creating and uploading the required buffer changes Devnet state and temporarily locks rent, so it requires separate authorization before the signed simulation can resume.
