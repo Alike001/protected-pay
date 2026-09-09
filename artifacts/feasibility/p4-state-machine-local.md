@@ -845,4 +845,6 @@ Signed: true
 Broadcast: false
 ```
 
-This is the first live proof of the corrected accounting transition. Unlike version 1, opening does not place the liability in the sender's aggregate `locked` field. The value leaves `available` and exists only in the individual shared Payment, so the future Crank can decide its outcome without receiving access to either user's aggregate Deposit. A separate approval is required before a fresh signed private-open transaction may be broadcast.
+This is the first live proof of the corrected accounting transition. Unlike version 1, opening does not place the liability in the sender's aggregate `locked` field. The value leaves `available` and exists only in the individual shared Payment, so the future Crank can decide its outcome without receiving access to either user's aggregate Deposit.
+
+The standalone open must not be broadcast as the judged path. The earlier version-1 test proved that starting a five-minute claim window and then waiting for a separate schedule approval can leave the payment expired before automation is registered. The next checkpoint will therefore combine `open_payment` and the corrected Payment-only `schedule_payment` in one signed simulation and, after separate approval, one atomic broadcast. Either both actions succeed or neither does.

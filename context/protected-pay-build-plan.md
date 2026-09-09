@@ -96,7 +96,7 @@ The first three technical risks from the accepted specification map directly to 
 | G2 Crank | PASS | Official MagicBlock scheduling produced three autonomous private executions; one transition plus two no-ops; terminal state committed to Solana | Replace the probe with the real Payment state machine |
 | G3 privacy | NARROW PASS | Outsider denial and exact public/private metadata boundary measured | Independently verify TEE attestation; re-audit the future Payment layout |
 | Decision | NARROW / PROCEED | The architecture is viable with precise privacy language | Do not claim anonymity or permanent secrecy |
-| Phase 4 | V1 LIVE RECOVERY PASS / V2 OPEN SIM PASS | V2 fixture is delegated; authenticated private open proves per-Payment escrow without recipient Deposit access | Broadcast private open, then acknowledge, schedule, settle, claim, and test retries |
+| Phase 4 | V1 LIVE RECOVERY PASS / V2 OPEN SIM PASS | V2 fixture is delegated; authenticated private open proves per-Payment escrow without recipient Deposit access | Simulate and broadcast atomic open + schedule, then acknowledge, settle, claim, and test retries |
 | Phase 5 | WAITING | — | Build the 30-second product UI only after Phase 4 live tests pass |
 | Phase 6 | WAITING | — | End-to-end evidence, video, deployment, and submission |
 
@@ -104,7 +104,7 @@ The first three technical risks from the accepted specification map directly to 
 
 1. **Complete locally:** keep aggregate user Deposits private to their owners and use the shared Payment as per-payment escrow; Crank now targets only Payment.
 2. **Complete for the core lifecycle:** version-2 tests cover claims, cancel-versus-Crank, expiry boundaries, duplicate execution, overflow atomicity, legacy-version rejection, and conservation. Pause/revocation stays deferred with session-key automation.
-3. **Next:** after explicit approval, authenticate again and broadcast the already-proven 1-test-USDC version-2 private open.
+3. **Next:** preserve the proven private-open transition but package it atomically with the corrected Payment-only Crank schedule; simulate the combined signed transaction before any broadcast.
 4. Prove the real Crank lifecycle twice: acknowledged payment to settlement and abandoned payment to automatic expiry/refund, with both users offline and retries idempotent.
 5. Repeat the privacy audit and commit/undelegate proof for the corrected Payment layout. Preserve the narrow claim: pending amount, memo hash, status, and balances are private; wallet relationships and delegation metadata are not anonymous.
 6. Measure the funded-user approval count and package the normal flow as simply as the infrastructure permits.
