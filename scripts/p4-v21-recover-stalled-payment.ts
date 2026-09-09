@@ -328,7 +328,7 @@ if (!AUTH_APPROVED) {
         unauthenticatedProtectedReads: "all null",
         vaultCollateral: vaultToken.amount,
       },
-      proposedRecovery: {
+      guardedRecoveryPath: {
         executionEnvironment: "MagicBlock Private ER on Solana Devnet",
         instructions: ["advance_payment", "claim_payment"],
         atomic: true,
@@ -341,7 +341,8 @@ if (!AUTH_APPROVED) {
         transactionSigned: false,
         transactionBroadcast: false,
       },
-      nextApprovalRequired: AUTH_APPROVAL_FLAG,
+      privateTerminalStateRequiresAuthorizedRead: true,
+      authenticationOrTransactionSigned: false,
     }),
   );
   process.exit(0);

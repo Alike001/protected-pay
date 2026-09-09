@@ -1197,3 +1197,42 @@ Transaction broadcast: false
 ```
 
 The simulation proves the exact existing escrow can be recovered without recipient cooperation and without an intermediate partial state. A separate explicit approval is required to authenticate again, sign a fresh transaction, simulate those fresh wire bytes, and broadcast them to the Private ER.
+
+## Version-2.1 stalled-payment atomic recovery broadcast
+
+After separate explicit approval, the guarded client authenticated the exact sender again and revalidated the complete public and private pre-state. It built a fresh 298-byte transaction, passed signature-verified simulation, and submitted those same signed bytes to MagicBlock Private ER. Both recovery instructions finalized atomically.
+
+```text
+Execution environment: MagicBlock Private ER on Solana Devnet
+Finalized signature: 4JdybQt5GuBWPxt6QBX7b7CzRMyWGDumrHSH1HM2LgvpAVLHFSnwhUq8u1NsWyedkeBUzXkaksWFDWsES5p3WX29
+Finalized Private ER slot: 300869155
+Confirmation status: finalized
+Payment: 83JoRQii6JKQV5hziNgrrpoYmrzTom8h25gSVWEGpjNK
+Sender Deposit: 5gUmsQ4sxHvWrKTvbt8Vn4mDzVNH3xAaC11Tarj7uehB
+Instructions: advance_payment, claim_payment
+Atomic transaction: true
+Fresh signed simulation slot: 300869126
+Fresh simulation error: none
+Fresh simulation compute units: 16,043
+Private status before: Created
+Private status after: Expired
+Private escrow before: 1.000000 test USDC
+Payment redacted after claim: true
+Terminal commitment matches: true
+Sender available: 2.000000 -> 3.000000 test USDC
+Sender locked: 0 -> 0
+Recipient signature required: false
+Recipient Deposit included: false
+SPL token movement: none; private accounting only
+Protected amount or memo hash in logs: false
+Private ER fee reported by simulation: unavailable
+Post-broadcast public verification slot: 495745952
+Public delegated snapshots changed: false
+Vault collateral changed: false
+Vault collateral: 3.000000 test USDC
+Unauthenticated protected reads: all null
+Bearer token printed or persisted: false
+Hardware attestation independently verified: false
+```
+
+This resolves the only escrow stranded by the original five-call scheduling defect. The operation required no recipient cooperation, exposed no protected amount or memo in program logs, did not move SPL tokens, and could not leave an intermediate `Expired`-but-unclaimed state because advance and claim shared one transaction. The next live proof uses fresh version-2 Payment accounts scheduled by the deployed version-2.1 six-iteration code.
