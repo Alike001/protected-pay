@@ -1,6 +1,6 @@
 # Plan: Protected Pay Risk-First Hackathon Build
 
-Status: active implementation plan. G0–G3 passed with narrowed privacy language. Phase 4's real private open and sender recovery paths pass, and the version-2 permission-topology correction now passes locally. Devnet upgrade and real Payment Crank proof remain before product UI work.
+Status: active implementation plan. G0–G3 passed with narrowed privacy language. Phase 4's real private open and sender recovery paths pass, and the version-2 permission-topology correction is deployed on Devnet. The real version-2 Payment Crank proof remains before product UI work.
 
 ## Inputs
 
@@ -27,6 +27,8 @@ No separate user-story document exists. The PRD's user journeys and acceptance c
 - The complete Phase 4 program is deployed. A real private Payment opened with 1 test USDC locked, then an expired-payment sender cancellation finalized and restored the sender to 3 available / 0 locked without exposing the transition publicly.
 - The real Payment schedule simulation exposed a design blocker: `advance_payment` spans the sender and recipient aggregate Deposits, but the authenticated sender correctly cannot read the recipient Deposit. Granting that access would leak the recipient's aggregate balance, so the unsafe permission shortcut is rejected.
 - The local version-2 state machine resolves that blocker without changing Payment account size: opening transfers liability from the sender Deposit into the shared Payment; Crank mutates only Payment; settlement/expiry claims touch only Payment plus the claimant's own Deposit; cancellation refunds and seals atomically. Twenty-two tests, IDL/client generation, TypeScript, clippy, and the optimized SBF build pass.
+- The reviewed version-2 binary is deployed at slot `495652516`; an independent on-chain dump matched SHA-256 `5b2f04b8b347a85e5f7f03dc9305709aaaab7fb538738d348919a8811756d6f5` exactly.
+- A fresh version-2 settlement Payment shell and permission now pass an unsigned Devnet simulation. No USDC moves and the existing delegated Deposits are unchanged; broadcast awaits its own approval.
 - Node `24.14.1`, Yarn `1.22.22`, Rust/Cargo `1.96.0`, Solana CLI `4.0.1`, Anchor CLI `1.0.2`, and AVM `1.0.1` are installed.
 - The pinned MagicBlock private-payments starter uses Node 24, Anchor `0.31.1`, `ephemeral-rollups-sdk` `0.2.11`, `@solana/web3.js` `1.98.x`, and Next.js `15.3.x`. It remains prior art for the token/private-account lifecycle, not the build baseline: the current official Crank example requires Anchor `1.0.2` and SDK revision `0fc4604157de51df28693e02e5a1a6a4a08c8a03` with `crank`, so Protected Pay pins that newer stack.
 - The installed Anchor CLI does not match the starter's Anchor version. The build must use AVM to pin the compatible CLI or deliberately upgrade only after the unchanged baseline is reproduced.
@@ -93,7 +95,7 @@ The first three technical risks from the accepted specification map directly to 
 | G2 Crank | PASS | Official MagicBlock scheduling produced three autonomous private executions; one transition plus two no-ops; terminal state committed to Solana | Replace the probe with the real Payment state machine |
 | G3 privacy | NARROW PASS | Outsider denial and exact public/private metadata boundary measured | Independently verify TEE attestation; re-audit the future Payment layout |
 | Decision | NARROW / PROCEED | The architecture is viable with precise privacy language | Do not claim anonymity or permanent secrecy |
-| Phase 4 | V1 LIVE RECOVERY PASS / V2 LOCAL PASS | Real v1 private open and recovery pass; v2 per-Payment escrow removes aggregate Deposits from the Crank target and passes all local checks | Upgrade Devnet, create fresh v2 fixtures, and prove settlement/expiry/claim/cancel-race paths |
+| Phase 4 | V1 LIVE RECOVERY PASS / V2 DEPLOYED | Real v1 private open and recovery pass; v2 per-Payment escrow is live and its fresh settlement bootstrap passes unsigned simulation | Broadcast the fresh fixture, then prove settlement/expiry/claim/cancel-race paths |
 | Phase 5 | WAITING | — | Build the 30-second product UI only after Phase 4 live tests pass |
 | Phase 6 | WAITING | — | End-to-end evidence, video, deployment, and submission |
 
@@ -101,7 +103,7 @@ The first three technical risks from the accepted specification map directly to 
 
 1. **Complete locally:** keep aggregate user Deposits private to their owners and use the shared Payment as per-payment escrow; Crank now targets only Payment.
 2. **Complete for the core lifecycle:** version-2 tests cover claims, cancel-versus-Crank, expiry boundaries, duplicate execution, overflow atomicity, legacy-version rejection, and conservation. Pause/revocation stays deferred with session-key automation.
-3. **Next:** simulate and upgrade the Devnet program, then bootstrap fresh version-2 payment fixtures rather than reusing the terminal version-1 Payment.
+3. **Next:** after explicit approval, broadcast the already-simulated fresh version-2 settlement bootstrap rather than reusing the terminal version-1 Payment.
 4. Prove the real Crank lifecycle twice: acknowledged payment to settlement and abandoned payment to automatic expiry/refund, with both users offline and retries idempotent.
 5. Repeat the privacy audit and commit/undelegate proof for the corrected Payment layout. Preserve the narrow claim: pending amount, memo hash, status, and balances are private; wallet relationships and delegation metadata are not anonymous.
 6. Measure the funded-user approval count and package the normal flow as simply as the infrastructure permits.

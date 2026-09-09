@@ -679,3 +679,35 @@ Payment-state mutation: none
 ```
 
 This completes the version-2 deployment checkpoint. It changes only executable program bytecode and loader-owned deployment accounts; it does not create a payment, move user funds, or modify an existing payment account. The next checkpoint must exercise the live version-2 state machine through its separately approved product flow.
+
+## Version-2 settlement bootstrap simulation
+
+The first live version-2 fixture reuses the funded sender Deposit, empty recipient Deposit, and both existing delegated Deposit permissions. It creates only a fresh public Payment shell and its MagicBlock permission. The unsigned client validated the deployed program, exact Config and timing policy, both delegated Deposit identities and permissions, both proposed account absences, the two wallets, and the Permission Program before simulation.
+
+```text
+Finalized pre-state slot: 495658166
+Simulation slot: 495658206
+Sender: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Recipient: HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr
+Payment label: protected-pay:phase4:v2:settlement:1
+Payment ID: e415db75d70ee2d9e9a82606d0fabf29b8a1bce2a6043ccab479238ed70f4be0
+Payment: 83JoRQii6JKQV5hziNgrrpoYmrzTom8h25gSVWEGpjNK
+Payment permission: 3phccDv3mz1jPfHqPcF5qW83hB46M2tcAazqNDtWmvnU
+Instructions: prepare_payment, create_payment_permission
+Payment version after simulation: 2
+Payment amount/initialized: 0 / false
+Sender signature required: yes
+Recipient signature required: no
+Transaction size: 464 bytes
+Simulation error: null
+Compute units consumed: 27,814
+Estimated fee: 5,000 lamports
+Estimated fee plus new-account rent: 5,430,440 lamports
+USDC moved: 0
+SOL transferred: 0
+Existing private Deposits mutated: false
+Signed: false
+Broadcast: false
+```
+
+This proves that the upgraded program creates version-2 shells and that the cheapest safe fixture path can reuse the already onboarded users. The shell necessarily reveals sender, recipient, mint, and Payment address on Solana L1; the amount, memo, timestamps, and active status remain zero/uninitialized until the later private open. A separate sender approval is required before this bootstrap can be signed and broadcast.

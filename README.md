@@ -14,9 +14,9 @@ The risk-first feasibility phase is complete:
 
 The project will therefore proceed with the precise claim **“private while pending inside MagicBlock's authenticated Private ER,”** not anonymous or permanently secret payments.
 
-Phase 4's first deployed lifecycle proved private open and sender recovery, then exposed a real permission-topology constraint: one Crank instruction cannot safely touch both users' owner-only aggregate Deposits. The local version-2 design now moves pending liability into the shared Payment, lets Crank mutate only that Payment, and adds owner-only terminal claims. Its 22 Rust tests, regenerated IDL/client, TypeScript check, clippy check, and optimized SBF build pass. The next gate is a Devnet program upgrade followed by the real Payment Crank lifecycle before UI work.
+Phase 4's first deployed lifecycle proved private open and sender recovery, then exposed a real permission-topology constraint: one Crank instruction cannot safely touch both users' owner-only aggregate Deposits. Version 2 moves pending liability into the shared Payment, lets Crank mutate only that Payment, and adds owner-only terminal claims. Its 22 Rust tests, regenerated IDL/client, TypeScript check, clippy check, and optimized SBF build pass, and the reviewed binary is now deployed on Devnet. The next gate is the real version-2 Payment Crank lifecycle before UI work.
 
-The current Devnet program still contains the version-1 state machine; the version-2 permission correction is locally built but not yet deployed. The project uses only non-value Devnet test assets and is not audited or production-ready.
+The current Devnet program contains the version-2 state machine. A fresh settlement Payment bootstrap has passed unsigned simulation but has not been broadcast. The project uses only non-value Devnet test assets and is not audited or production-ready.
 
 ## Source layout
 
