@@ -34,6 +34,7 @@ import {
   PAYMENT_DISCRIMINATOR,
 } from "../clients/ts/src/generated/accounts/payment.ts";
 import { getOpenPaymentInstructionAsync } from "../clients/ts/src/generated/instructions/openPayment.ts";
+import { getSchedulePaymentInstructionAsync } from "../clients/ts/src/generated/instructions/schedulePayment.ts";
 import { findDepositPda } from "../clients/ts/src/generated/pdas/deposit.ts";
 import { findPaymentPda } from "../clients/ts/src/generated/pdas/payment.ts";
 import { PaymentStatus } from "../clients/ts/src/generated/types/paymentStatus.ts";
@@ -60,13 +61,21 @@ const DEFAULT_BASE_RPC_URL = "https://api.devnet.solana.com" as const;
 const BASE_RPC_URL = (process.env.SOLANA_RPC_URL ??
   DEFAULT_BASE_RPC_URL) as typeof DEFAULT_BASE_RPC_URL;
 const V2_MODE = process.argv.includes("--v2-settlement");
-const APPROVAL_FLAG = V2_MODE
-  ? "--approved-p4-v2-tee-auth-private-open-simulation"
-  : "--approved-p4-tee-auth-private-open-simulation";
+const ATOMIC_SCHEDULE = process.argv.includes("--atomic-schedule");
+if (ATOMIC_SCHEDULE && !V2_MODE) {
+  throw new Error("Atomic Payment-only scheduling is available only for version 2");
+}
+const APPROVAL_FLAG = ATOMIC_SCHEDULE
+  ? "--approved-p4-v2-tee-auth-atomic-open-schedule-simulation"
+  : V2_MODE
+    ? "--approved-p4-v2-tee-auth-private-open-simulation"
+    : "--approved-p4-tee-auth-private-open-simulation";
 const SEND_REQUESTED = process.argv.includes("--send");
-const SEND_APPROVAL_FLAG = V2_MODE
-  ? "--approved-p4-v2-private-payment-open"
-  : "--approved-p4-private-payment-open";
+const SEND_APPROVAL_FLAG = ATOMIC_SCHEDULE
+  ? "--approved-p4-v2-atomic-open-schedule"
+  : V2_MODE
+    ? "--approved-p4-v2-private-payment-open"
+    : "--approved-p4-private-payment-open";
 const MAX_CONFIRMATION_POLLS = 120;
 const RECIPIENT = V2_MODE
   ? V2_RECIPIENT
@@ -95,6 +104,9 @@ const EXPECTED_PAYMENT_VERSION = V2_MODE ? 2 : 1;
 const PRIVATE_PRE_OPEN_NONCE = V2_MODE ? 2n : 1n;
 const PRIVATE_POST_OPEN_NONCE = PRIVATE_PRE_OPEN_NONCE + 1n;
 const PRIVATE_POST_OPEN_LOCKED = V2_MODE ? 0n : PAYMENT_AMOUNT;
+const MAGIC_PROGRAM = "Magic11111111111111111111111111111111111111" as Address;
+const EXECUTION_INTERVAL_MILLIS = 60_000n;
+const ITERATIONS = 5n;
 const CONFIG_SIZE = 154;
 const PAYMENT_SIZE = 245;
 const DEPOSIT_SIZE = 98;
@@ -324,7 +336,7 @@ if (
 const privateRpc = createSolanaRpc(authentication.authenticatedUrl.toString());
 const privateState = await privateRpc
   .getMultipleAccounts(
-    [payment, paymentPermission, sender.deposit, sender.permission],
+    [payment, paymentPermission, sender.deposit, sender.permission, MAGIC_PROGRAM],
     { commitment: "confirmed", encoding: "base64" },
   )
   .send();
@@ -333,6 +345,7 @@ const [
   privatePaymentPermissionAccount,
   privateSenderDepositAccount,
   privateSenderPermissionAccount,
+  privateMagicProgramAccount,
 ] = privateState.value;
 if (
   !privatePaymentAccount ||
@@ -343,6 +356,9 @@ if (
   accountBytes(privateSenderDepositAccount.data).length !== DEPOSIT_SIZE
 ) {
   throw new Error("Authenticated Payment or sender Deposit failed owner/length validation");
+}
+if (ATOMIC_SCHEDULE && !privateMagicProgramAccount?.executable) {
+  throw new Error("MagicBlock Crank program is unavailable in the Private ER");
 }
 for (const account of [
   privatePaymentPermissionAccount,
@@ -392,8 +408,31 @@ if (
   throw new Error("Unexpected authenticated pre-open Payment or Deposit state");
 }
 
+const taskId = ATOMIC_SCHEDULE ? BigInt(Date.now()) : 0n;
+const scheduleInstruction = ATOMIC_SCHEDULE
+  ? await getSchedulePaymentInstructionAsync({
+      magicProgram: MAGIC_PROGRAM,
+      payer: authentication.signerClient.identity,
+      payment,
+      program: PROGRAM_ID,
+      paymentId: PAYMENT_ID,
+      taskId,
+      executionIntervalMillis: EXECUTION_INTERVAL_MILLIS,
+      iterations: ITERATIONS,
+    })
+  : null;
+if (
+  scheduleInstruction &&
+  (scheduleInstruction.accounts.length !== 4 ||
+    scheduleInstruction.accounts.some(
+      (account) =>
+        account.address === sender.deposit || account.address === recipientDeposit,
+    ))
+) {
+  throw new Error("Atomic schedule unexpectedly includes an aggregate Deposit");
+}
 const instructions = [
-  getSetComputeUnitLimitInstruction({ units: 200_000 }),
+  getSetComputeUnitLimitInstruction({ units: ATOMIC_SCHEDULE ? 400_000 : 200_000 }),
   await getOpenPaymentInstructionAsync({
     sender: authentication.signerClient.identity,
     config: sender.config,
@@ -403,6 +442,7 @@ const instructions = [
     amount: PAYMENT_AMOUNT,
     memoHash: MEMO_HASH,
   }),
+  ...(scheduleInstruction ? [scheduleInstruction] : []),
 ];
 const { value: latestBlockhash } = await privateRpc
   .getLatestBlockhash({ commitment: "confirmed" })
@@ -481,7 +521,7 @@ if (
   simulatedPayment.createdAt <= 0n ||
   simulatedPayment.settleAfter - simulatedPayment.createdAt !== 60n ||
   simulatedPayment.expiresAt - simulatedPayment.createdAt !== 300n ||
-  simulatedPayment.taskId !== 0n ||
+  simulatedPayment.taskId !== taskId ||
   simulatedPayment.status !== PaymentStatus.Created ||
   !bytesEqual(simulatedPayment.memoHash, MEMO_HASH) ||
   !bytesEqual(simulatedPayment.terminalCommitment, ZERO_32) ||
@@ -609,7 +649,9 @@ console.log(
       cluster: "MagicBlock Private ER on Solana Devnet",
       feePayer: AUTHORITY,
       signer: AUTHORITY,
-      instruction: "open_payment",
+      instructions: ATOMIC_SCHEDULE
+        ? ["open_payment", "schedule_payment"]
+        : ["open_payment"],
       token: "Circle Devnet test USDC",
       amount: V2_MODE
         ? "1.000000 USDC individual Payment escrow"
@@ -617,6 +659,16 @@ console.log(
       paymentLabel: PAYMENT_LABEL,
       paymentVersion: EXPECTED_PAYMENT_VERSION,
       escrowModel: V2_MODE ? "per-Payment liability" : "aggregate Deposit locked field",
+      taskId: ATOMIC_SCHEDULE ? taskId : null,
+      executionIntervalMillis: ATOMIC_SCHEDULE
+        ? EXECUTION_INTERVAL_MILLIS
+        : null,
+      iterations: ATOMIC_SCHEDULE ? ITERATIONS : null,
+      scheduledTarget: ATOMIC_SCHEDULE ? "advance_payment" : null,
+      scheduledTargetAccounts: ATOMIC_SCHEDULE ? [payment] : [],
+      scheduledTargetRequiresSigner: false,
+      senderDepositIncludedInSchedule: false,
+      recipientDepositIncludedInSchedule: false,
       recipient: RECIPIENT,
       safetyWindowSeconds: 60,
       claimWindowSeconds: 300,
@@ -635,6 +687,7 @@ console.log(
         amount: simulatedPayment.amount,
         initialized: simulatedPayment.initialized,
         status: PaymentStatus[simulatedPayment.status],
+        taskId: simulatedPayment.taskId,
         settleAfterDeltaSeconds:
           simulatedPayment.settleAfter - simulatedPayment.createdAt,
         expiresAfterDeltaSeconds:
@@ -768,7 +821,7 @@ if (SEND_REQUESTED) {
     confirmedPayment.createdAt <= 0n ||
     confirmedPayment.settleAfter - confirmedPayment.createdAt !== 60n ||
     confirmedPayment.expiresAt - confirmedPayment.createdAt !== 300n ||
-    confirmedPayment.taskId !== 0n ||
+    confirmedPayment.taskId !== taskId ||
     confirmedPayment.status !== PaymentStatus.Created ||
     !bytesEqual(confirmedPayment.memoHash, MEMO_HASH) ||
     !bytesEqual(confirmedPayment.terminalCommitment, ZERO_32) ||
@@ -830,15 +883,19 @@ if (SEND_REQUESTED) {
         signature: preparedSignature,
         confirmation,
         feePayer: AUTHORITY,
-        instruction: "open_payment",
+        instructions: ATOMIC_SCHEDULE
+          ? ["open_payment", "schedule_payment"]
+          : ["open_payment"],
         token: "Circle Devnet test USDC",
         internalAmountLocked: confirmedPayment.amount,
+        taskId: confirmedPayment.taskId,
+        scheduledTarget: ATOMIC_SCHEDULE ? "advance_payment" : null,
+        scheduledTargetAccounts: ATOMIC_SCHEDULE ? [payment] : [],
         splTokenMovement: "none",
         recipient: confirmedPayment.recipient,
         createdAt: confirmedPayment.createdAt,
         settleAfter: confirmedPayment.settleAfter,
         expiresAt: confirmedPayment.expiresAt,
-        taskId: confirmedPayment.taskId,
         status: PaymentStatus[confirmedPayment.status],
         senderAvailable: confirmedDeposit.available,
         senderLocked: confirmedDeposit.locked,

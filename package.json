@@ -62,6 +62,8 @@
     "p4:send:private-open": "tsx scripts/p4-auth-simulate-private-open.ts --approved-p4-tee-auth-private-open-simulation --send --approved-p4-private-payment-open",
     "p4:v2:auth:simulate:private-open": "tsx scripts/p4-auth-simulate-private-open.ts --v2-settlement --approved-p4-v2-tee-auth-private-open-simulation",
     "p4:v2:send:private-open": "tsx scripts/p4-auth-simulate-private-open.ts --v2-settlement --approved-p4-v2-tee-auth-private-open-simulation --send --approved-p4-v2-private-payment-open",
+    "p4:v2:auth:simulate:atomic-open-schedule": "tsx scripts/p4-auth-simulate-private-open.ts --v2-settlement --atomic-schedule --approved-p4-v2-tee-auth-atomic-open-schedule-simulation",
+    "p4:v2:send:atomic-open-schedule": "tsx scripts/p4-auth-simulate-private-open.ts --v2-settlement --atomic-schedule --approved-p4-v2-tee-auth-atomic-open-schedule-simulation --send --approved-p4-v2-atomic-open-schedule",
     "p4:legacy:diagnose:expired-schedule": "tsx scripts/p4-auth-simulate-expired-schedule.ts --approved-p4-tee-auth-expired-schedule-simulation",
     "p4:auth:simulate:expired-cancel": "tsx scripts/p4-auth-simulate-expired-cancel.ts --approved-p4-tee-auth-expired-cancel-simulation",
     "p4:send:expired-cancel": "tsx scripts/p4-auth-simulate-expired-cancel.ts --approved-p4-tee-auth-expired-cancel-simulation --send --approved-p4-expired-payment-cancellation",

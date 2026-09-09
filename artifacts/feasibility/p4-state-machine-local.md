@@ -848,3 +848,49 @@ Broadcast: false
 This is the first live proof of the corrected accounting transition. Unlike version 1, opening does not place the liability in the sender's aggregate `locked` field. The value leaves `available` and exists only in the individual shared Payment, so the future Crank can decide its outcome without receiving access to either user's aggregate Deposit.
 
 The standalone open must not be broadcast as the judged path. The earlier version-1 test proved that starting a five-minute claim window and then waiting for a separate schedule approval can leave the payment expired before automation is registered. The next checkpoint will therefore combine `open_payment` and the corrected Payment-only `schedule_payment` in one signed simulation and, after separate approval, one atomic broadcast. Either both actions succeed or neither does.
+
+## Version-2 atomic private-open and Crank-schedule simulation
+
+After explicit approval, the client revalidated the public and protected state, authenticated the sender, and checked that the MagicBlock Crank program is executable inside the Private ER. The first implementation incorrectly looked for that program on base Devnet and stopped before authentication; the corrected check runs in the execution environment where the scheduler CPI exists.
+
+The final signed transaction placed `open_payment` immediately before `schedule_payment`. Its schedule instruction has four outer accounts—MagicBlock program, payer, Payment, and Protected Pay program—and includes neither aggregate Deposit. The Protected Pay program constructs a signer-free `advance_payment` target containing the Payment alone.
+
+```text
+Public finalized pre-state slot: 495673073
+Authenticated Private ER pre-state slot: 300628007
+Signed simulation slot: 300628053
+Private ER: https://devnet-tee.magicblock.app
+Authenticated sender: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Recipient: HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr
+Payment: 83JoRQii6JKQV5hziNgrrpoYmrzTom8h25gSVWEGpjNK
+Instructions: open_payment, schedule_payment
+Private amount: 1.000000 test USDC
+Payment version: 2
+Escrow model: individual Payment liability
+Task ID: 1788964779354
+Execution interval / iterations: 60,000 ms / 5
+Scheduled target: signer-free advance_payment
+Scheduled target accounts: Payment only
+Sender Deposit included in schedule: false
+Recipient Deposit included in schedule: false
+Transaction size: 494 bytes
+Prepared, unbroadcast signature: 2irzDsk1isoJL5z9LFosdpVcPfXnq4jSWTPBNTGLiWCXoSMps9s9f3Pk11NZkyz3aKvusjdLneb74gpaU8DKekLC
+Signature verification: passed
+Simulation error: null
+Compute units consumed: 25,270
+Private sender available: 3.000000 -> 2.000000 test USDC
+Private sender locked: 0 -> 0 test USDC
+Private sender payment nonce: 2 -> 3
+Payment amount/initialized/task: 1.000000 / true / 1788964779354
+SPL token movement: none
+Protected amount or memo hash in logs: false
+Unauthenticated protected reads: all null
+Private state persisted after simulation: false
+Public state changed after simulation: false
+Bearer token printed or persisted: false
+Hardware attestation independently verified: false
+Signed: true
+Broadcast: false
+```
+
+This closes the version-1 timing gap: a broadcast can no longer start the five-minute window without also registering its automation. A separate approval is still required for a fresh authentication, signature, and atomic broadcast; the simulation signature is intentionally unbroadcast and will expire.

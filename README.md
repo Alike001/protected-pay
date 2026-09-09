@@ -16,7 +16,7 @@ The project will therefore proceed with the precise claim **“private while pen
 
 Phase 4's first deployed lifecycle proved private open and sender recovery, then exposed a real permission-topology constraint: one Crank instruction cannot safely touch both users' owner-only aggregate Deposits. Version 2 moves pending liability into the shared Payment, lets Crank mutate only that Payment, and adds owner-only terminal claims. Its 22 Rust tests, regenerated IDL/client, TypeScript check, clippy check, and optimized SBF build pass, and the reviewed binary is now deployed on Devnet. The next gate is the real version-2 Payment Crank lifecycle before UI work.
 
-The current Devnet program contains the version-2 state machine. A fresh settlement Payment and permission are delegated to MagicBlock, and its signed private-open simulation moves 1 test USDC into per-Payment escrow without touching the recipient Deposit or the aggregate locked field. The open has not been broadcast; the next test will combine open and Crank registration atomically so no live payment starts without automation. The project uses only non-value Devnet test assets and is not audited or production-ready.
+The current Devnet program contains the version-2 state machine. A fresh settlement Payment and permission are delegated to MagicBlock, and a signed atomic open-plus-schedule simulation moves 1 test USDC into per-Payment escrow while registering a Payment-only Crank task. Nothing has been broadcast. The project uses only non-value Devnet test assets and is not audited or production-ready.
 
 ## Source layout
 
