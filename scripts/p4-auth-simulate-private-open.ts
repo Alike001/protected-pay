@@ -53,6 +53,8 @@ import {
 import { authenticatePrivateEr, PRIVATE_ER_ORIGIN } from "./private-er-auth.ts";
 import {
   V2_RECIPIENT,
+  V21_EXPIRY_PAYMENT_ID,
+  V21_EXPIRY_PAYMENT_LABEL,
   V21_SETTLEMENT_PAYMENT_ID,
   V21_SETTLEMENT_PAYMENT_LABEL,
   V2_SETTLEMENT_PAYMENT_ID,
@@ -64,54 +66,71 @@ const BASE_RPC_URL = (process.env.SOLANA_RPC_URL ??
   DEFAULT_BASE_RPC_URL) as typeof DEFAULT_BASE_RPC_URL;
 const V2_MODE = process.argv.includes("--v2-settlement");
 const V21_MODE = process.argv.includes("--v21-settlement");
-if (V2_MODE && V21_MODE) {
-  throw new Error("Select only one version-2 settlement fixture");
+const V21_EXPIRY_MODE = process.argv.includes("--v21-expiry");
+if ([V2_MODE, V21_MODE, V21_EXPIRY_MODE].filter(Boolean).length > 1) {
+  throw new Error("Select only one version-2 Payment fixture");
 }
-const VERSION2_MODE = V2_MODE || V21_MODE;
+const VERSION2_MODE = V2_MODE || V21_MODE || V21_EXPIRY_MODE;
 const ATOMIC_SCHEDULE = process.argv.includes("--atomic-schedule");
 if (ATOMIC_SCHEDULE && !VERSION2_MODE) {
-  throw new Error("Atomic Payment-only scheduling is available only for version 2");
+  throw new Error(
+    "Atomic Payment-only scheduling is available only for version 2",
+  );
 }
 const APPROVAL_FLAG = ATOMIC_SCHEDULE
-  ? V21_MODE
-    ? "--approved-p4-v21-tee-auth-atomic-open-schedule-simulation"
-    : "--approved-p4-v2-tee-auth-atomic-open-schedule-simulation"
-  : V21_MODE
-    ? "--approved-p4-v21-tee-auth-private-open-simulation"
-    : V2_MODE
-      ? "--approved-p4-v2-tee-auth-private-open-simulation"
-      : "--approved-p4-tee-auth-private-open-simulation";
+  ? V21_EXPIRY_MODE
+    ? "--approved-p4-v21-expiry-tee-auth-atomic-open-schedule-simulation"
+    : V21_MODE
+      ? "--approved-p4-v21-tee-auth-atomic-open-schedule-simulation"
+      : "--approved-p4-v2-tee-auth-atomic-open-schedule-simulation"
+  : V21_EXPIRY_MODE
+    ? "--approved-p4-v21-expiry-tee-auth-private-open-simulation"
+    : V21_MODE
+      ? "--approved-p4-v21-tee-auth-private-open-simulation"
+      : V2_MODE
+        ? "--approved-p4-v2-tee-auth-private-open-simulation"
+        : "--approved-p4-tee-auth-private-open-simulation";
 const SEND_REQUESTED = process.argv.includes("--send");
 const SEND_APPROVAL_FLAG = ATOMIC_SCHEDULE
-  ? V21_MODE
-    ? "--approved-p4-v21-atomic-open-schedule"
-    : "--approved-p4-v2-atomic-open-schedule"
-  : V21_MODE
-    ? "--approved-p4-v21-private-payment-open"
-    : V2_MODE
-      ? "--approved-p4-v2-private-payment-open"
-      : "--approved-p4-private-payment-open";
+  ? V21_EXPIRY_MODE
+    ? "--approved-p4-v21-expiry-atomic-open-schedule"
+    : V21_MODE
+      ? "--approved-p4-v21-atomic-open-schedule"
+      : "--approved-p4-v2-atomic-open-schedule"
+  : V21_EXPIRY_MODE
+    ? "--approved-p4-v21-expiry-private-payment-open"
+    : V21_MODE
+      ? "--approved-p4-v21-private-payment-open"
+      : V2_MODE
+        ? "--approved-p4-v2-private-payment-open"
+        : "--approved-p4-private-payment-open";
 const MAX_CONFIRMATION_POLLS = 120;
 const RECIPIENT = VERSION2_MODE
   ? V2_RECIPIENT
   : ("HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr" as Address);
-const PAYMENT_LABEL = V21_MODE
-  ? V21_SETTLEMENT_PAYMENT_LABEL
-  : V2_MODE
-    ? V2_SETTLEMENT_PAYMENT_LABEL
-    : "protected-pay:phase4:correct-payment:v1";
-const PAYMENT_ID = V21_MODE
-  ? V21_SETTLEMENT_PAYMENT_ID
-  : V2_MODE
-    ? V2_SETTLEMENT_PAYMENT_ID
-    : new Uint8Array(createHash("sha256").update(PAYMENT_LABEL).digest());
+const PAYMENT_LABEL = V21_EXPIRY_MODE
+  ? V21_EXPIRY_PAYMENT_LABEL
+  : V21_MODE
+    ? V21_SETTLEMENT_PAYMENT_LABEL
+    : V2_MODE
+      ? V2_SETTLEMENT_PAYMENT_LABEL
+      : "protected-pay:phase4:correct-payment:v1";
+const PAYMENT_ID = V21_EXPIRY_MODE
+  ? V21_EXPIRY_PAYMENT_ID
+  : V21_MODE
+    ? V21_SETTLEMENT_PAYMENT_ID
+    : V2_MODE
+      ? V2_SETTLEMENT_PAYMENT_ID
+      : new Uint8Array(createHash("sha256").update(PAYMENT_LABEL).digest());
 // This is a non-sensitive fixture preimage. The proof tests ledger privacy,
 // not secrecy of source-controlled test data.
-const MEMO_PREIMAGE = V21_MODE
-  ? "invoice:prototype-v21-settlement-001:consulting-services"
-  : V2_MODE
-    ? "invoice:prototype-v2-settlement-001:consulting-services"
-    : "invoice:prototype-001:consulting-services";
+const MEMO_PREIMAGE = V21_EXPIRY_MODE
+  ? "invoice:prototype-v21-expiry-001:consulting-services"
+  : V21_MODE
+    ? "invoice:prototype-v21-settlement-001:consulting-services"
+    : V2_MODE
+      ? "invoice:prototype-v2-settlement-001:consulting-services"
+      : "invoice:prototype-001:consulting-services";
 const MEMO_HASH = new Uint8Array(
   createHash("sha256").update(MEMO_PREIMAGE).digest(),
 );
@@ -119,8 +138,18 @@ const ZERO_32 = new Uint8Array(32);
 const PAYMENT_AMOUNT = 1_000_000n;
 const TOTAL_VAULT_AMOUNT = 3_000_000n;
 const EXPECTED_PAYMENT_VERSION = VERSION2_MODE ? 2 : 1;
-const PRIVATE_PRE_OPEN_NONCE = V21_MODE ? 3n : V2_MODE ? 2n : 1n;
+const PRIVATE_PRE_OPEN_NONCE = V21_EXPIRY_MODE
+  ? 4n
+  : V21_MODE
+    ? 3n
+    : V2_MODE
+      ? 2n
+      : 1n;
 const PRIVATE_POST_OPEN_NONCE = PRIVATE_PRE_OPEN_NONCE + 1n;
+const PRIVATE_PRE_OPEN_AVAILABLE = V21_EXPIRY_MODE
+  ? 2_000_000n
+  : TOTAL_VAULT_AMOUNT;
+const PRIVATE_POST_OPEN_AVAILABLE = PRIVATE_PRE_OPEN_AVAILABLE - PAYMENT_AMOUNT;
 const PRIVATE_POST_OPEN_LOCKED = VERSION2_MODE ? 0n : PAYMENT_AMOUNT;
 const MAGIC_PROGRAM = "Magic11111111111111111111111111111111111111" as Address;
 const EXECUTION_INTERVAL_MILLIS = 60_000n;
@@ -144,7 +173,8 @@ function accountBytes(data: EncodedAccountData): Uint8Array {
 function json(value: unknown): string {
   return JSON.stringify(
     value,
-    (_key, item: unknown) => (typeof item === "bigint" ? item.toString() : item),
+    (_key, item: unknown) =>
+      typeof item === "bigint" ? item.toString() : item,
     2,
   );
 }
@@ -175,7 +205,9 @@ function assertDiscriminator(
 
 function decodeTokenAccount(data: Uint8Array) {
   if (data.length !== 165) {
-    throw new Error(`Expected 165 token-account bytes, received ${data.length}`);
+    throw new Error(
+      `Expected 165 token-account bytes, received ${data.length}`,
+    );
   }
   const addressDecoder = getAddressDecoder();
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -199,10 +231,14 @@ async function permissionPda(protectedAccount: Address) {
 }
 
 if (!process.argv.includes(APPROVAL_FLAG)) {
-  throw new Error(`Refusing to sign TEE authentication without ${APPROVAL_FLAG}`);
+  throw new Error(
+    `Refusing to sign TEE authentication without ${APPROVAL_FLAG}`,
+  );
 }
 if (SEND_REQUESTED && !process.argv.includes(SEND_APPROVAL_FLAG)) {
-  throw new Error(`Refusing to send the private Payment open without ${SEND_APPROVAL_FLAG}`);
+  throw new Error(
+    `Refusing to send the private Payment open without ${SEND_APPROVAL_FLAG}`,
+  );
 }
 const keypairPath = process.env.SOLANA_KEYPAIR_PATH;
 if (!keypairPath) {
@@ -254,7 +290,9 @@ if (!configAccount || configAccount.owner !== PROGRAM_ID) {
 }
 const configBytes = accountBytes(configAccount.data);
 if (configBytes.length !== CONFIG_SIZE) {
-  throw new Error(`Expected ${CONFIG_SIZE} Config bytes, received ${configBytes.length}`);
+  throw new Error(
+    `Expected ${CONFIG_SIZE} Config bytes, received ${configBytes.length}`,
+  );
 }
 const config = getConfigDecoder().decode(configBytes);
 assertDiscriminator(config.discriminator, CONFIG_DISCRIMINATOR, "Config");
@@ -308,7 +346,11 @@ const publicPayment = getPaymentDecoder().decode(
 const publicSenderDeposit = getDepositDecoder().decode(
   accountBytes(publicSenderDepositAccount.data),
 );
-assertDiscriminator(publicPayment.discriminator, PAYMENT_DISCRIMINATOR, "Payment");
+assertDiscriminator(
+  publicPayment.discriminator,
+  PAYMENT_DISCRIMINATOR,
+  "Payment",
+);
 assertDiscriminator(
   publicSenderDeposit.discriminator,
   DEPOSIT_DISCRIMINATOR,
@@ -336,13 +378,15 @@ if (
 
 const unauthenticatedRpc = createSolanaRpc(PRIVATE_ER_ORIGIN);
 const unauthenticatedRead = await unauthenticatedRpc
-  .getMultipleAccounts(
-    [payment, sender.deposit, recipientDeposit],
-    { commitment: "confirmed", encoding: "base64" },
-  )
+  .getMultipleAccounts([payment, sender.deposit, recipientDeposit], {
+    commitment: "confirmed",
+    encoding: "base64",
+  })
   .send();
 if (unauthenticatedRead.value.some((account) => account !== null)) {
-  throw new Error("Unauthenticated Private ER unexpectedly exposed protected state");
+  throw new Error(
+    "Unauthenticated Private ER unexpectedly exposed protected state",
+  );
 }
 
 const authentication = await authenticatePrivateEr(keypairPath);
@@ -356,7 +400,13 @@ if (
 const privateRpc = createSolanaRpc(authentication.authenticatedUrl.toString());
 const privateState = await privateRpc
   .getMultipleAccounts(
-    [payment, paymentPermission, sender.deposit, sender.permission, MAGIC_PROGRAM],
+    [
+      payment,
+      paymentPermission,
+      sender.deposit,
+      sender.permission,
+      MAGIC_PROGRAM,
+    ],
     { commitment: "confirmed", encoding: "base64" },
   )
   .send();
@@ -375,7 +425,9 @@ if (
   privateSenderDepositAccount.owner !== PROGRAM_ID ||
   accountBytes(privateSenderDepositAccount.data).length !== DEPOSIT_SIZE
 ) {
-  throw new Error("Authenticated Payment or sender Deposit failed owner/length validation");
+  throw new Error(
+    "Authenticated Payment or sender Deposit failed owner/length validation",
+  );
 }
 if (ATOMIC_SCHEDULE && !privateMagicProgramAccount?.executable) {
   throw new Error("MagicBlock Crank program is unavailable in the Private ER");
@@ -420,7 +472,7 @@ if (
   privatePayment.version !== EXPECTED_PAYMENT_VERSION ||
   privateSenderDeposit.user !== AUTHORITY ||
   privateSenderDeposit.tokenMint !== USDC_MINT ||
-  privateSenderDeposit.available !== TOTAL_VAULT_AMOUNT ||
+  privateSenderDeposit.available !== PRIVATE_PRE_OPEN_AVAILABLE ||
   privateSenderDeposit.locked !== 0n ||
   privateSenderDeposit.nextPaymentNonce !== PRIVATE_PRE_OPEN_NONCE ||
   privateSenderDeposit.automationPaused
@@ -446,13 +498,16 @@ if (
   (scheduleInstruction.accounts.length !== 4 ||
     scheduleInstruction.accounts.some(
       (account) =>
-        account.address === sender.deposit || account.address === recipientDeposit,
+        account.address === sender.deposit ||
+        account.address === recipientDeposit,
     ))
 ) {
   throw new Error("Atomic schedule unexpectedly includes an aggregate Deposit");
 }
 const instructions = [
-  getSetComputeUnitLimitInstruction({ units: ATOMIC_SCHEDULE ? 400_000 : 200_000 }),
+  getSetComputeUnitLimitInstruction({
+    units: ATOMIC_SCHEDULE ? 400_000 : 200_000,
+  }),
   await getOpenPaymentInstructionAsync({
     sender: authentication.signerClient.identity,
     config: sender.config,
@@ -470,8 +525,12 @@ const { value: latestBlockhash } = await privateRpc
 const message = pipe(
   createTransactionMessage({ version: 0 }),
   (current) =>
-    setTransactionMessageFeePayerSigner(authentication.signerClient.payer, current),
-  (current) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, current),
+    setTransactionMessageFeePayerSigner(
+      authentication.signerClient.payer,
+      current,
+    ),
+  (current) =>
+    setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, current),
   (current) => appendTransactionMessageInstructions(instructions, current),
 );
 const signedTransaction = await signTransactionMessageWithSigners(message);
@@ -480,7 +539,9 @@ assertIsTransactionWithinSizeLimit(signedTransaction);
 const wire = getBase64EncodedWireTransaction(signedTransaction);
 const serializedBytes = Buffer.from(wire, "base64").length;
 if (serializedBytes > 1_232) {
-  throw new Error(`Private open is ${serializedBytes} bytes; Solana limit is 1232`);
+  throw new Error(
+    `Private open is ${serializedBytes} bytes; Solana limit is 1232`,
+  );
 }
 const preparedSignature = getSignatureFromTransaction(signedTransaction);
 const simulation = await privateRpc
@@ -514,7 +575,9 @@ if (
   simulatedSenderDepositAccount.owner !== PROGRAM_ID ||
   accountBytes(simulatedSenderDepositAccount.data).length !== DEPOSIT_SIZE
 ) {
-  throw new Error("Private-open simulation returned invalid account owners or lengths");
+  throw new Error(
+    "Private-open simulation returned invalid account owners or lengths",
+  );
 }
 const simulatedPayment = getPaymentDecoder().decode(
   accountBytes(simulatedPaymentAccount.data),
@@ -550,7 +613,7 @@ if (
   simulatedPayment.version !== EXPECTED_PAYMENT_VERSION ||
   simulatedSenderDeposit.user !== AUTHORITY ||
   simulatedSenderDeposit.tokenMint !== USDC_MINT ||
-  simulatedSenderDeposit.available !== 2_000_000n ||
+  simulatedSenderDeposit.available !== PRIVATE_POST_OPEN_AVAILABLE ||
   simulatedSenderDeposit.locked !== PRIVATE_POST_OPEN_LOCKED ||
   simulatedSenderDeposit.nextPaymentNonce !== PRIVATE_POST_OPEN_NONCE ||
   simulatedSenderDeposit.automationPaused ||
@@ -568,7 +631,8 @@ const memoHashHex = Buffer.from(MEMO_HASH).toString("hex");
 const logs = simulation.value.logs ?? [];
 if (
   logs.some(
-    (line) => line.includes(PAYMENT_AMOUNT.toString()) || line.includes(memoHashHex),
+    (line) =>
+      line.includes(PAYMENT_AMOUNT.toString()) || line.includes(memoHashHex),
   )
 ) {
   throw new Error("Private-open logs exposed a protected payment argument");
@@ -577,28 +641,31 @@ if (
 const [privateAfterSimulation, publicAfterSimulation, unauthenticatedAfter] =
   await Promise.all([
     privateRpc
-      .getMultipleAccounts(
-        [payment, sender.deposit],
-        { commitment: "confirmed", encoding: "base64" },
-      )
+      .getMultipleAccounts([payment, sender.deposit], {
+        commitment: "confirmed",
+        encoding: "base64",
+      })
       .send(),
     baseRpc
-      .getMultipleAccounts(
-        [payment, sender.deposit, sender.vaultUsdcAta],
-        { commitment: "finalized", encoding: "base64" },
-      )
+      .getMultipleAccounts([payment, sender.deposit, sender.vaultUsdcAta], {
+        commitment: "finalized",
+        encoding: "base64",
+      })
       .send(),
     unauthenticatedRpc
-      .getMultipleAccounts(
-        [payment, sender.deposit, recipientDeposit],
-        { commitment: "confirmed", encoding: "base64" },
-      )
+      .getMultipleAccounts([payment, sender.deposit, recipientDeposit], {
+        commitment: "confirmed",
+        encoding: "base64",
+      })
       .send(),
   ]);
 const [privatePaymentAfterAccount, privateDepositAfterAccount] =
   privateAfterSimulation.value;
-const [publicPaymentAfterAccount, publicDepositAfterAccount, publicVaultAfterAccount] =
-  publicAfterSimulation.value;
+const [
+  publicPaymentAfterAccount,
+  publicDepositAfterAccount,
+  publicVaultAfterAccount,
+] = publicAfterSimulation.value;
 if (
   !privatePaymentAfterAccount ||
   !privateDepositAfterAccount ||
@@ -636,7 +703,9 @@ if (
   ) ||
   unauthenticatedAfter.value.some((account) => account !== null)
 ) {
-  throw new Error("Simulation persisted state or weakened the privacy boundary");
+  throw new Error(
+    "Simulation persisted state or weakened the privacy boundary",
+  );
 }
 
 console.log(
@@ -762,7 +831,9 @@ if (SEND_REQUESTED) {
       .send();
     const status = response.value[0];
     if (status?.err) {
-      throw new Error(`Private Payment open failed after submission: ${json(status.err)}`);
+      throw new Error(
+        `Private Payment open failed after submission: ${json(status.err)}`,
+      );
     }
     if (
       status?.confirmationStatus === "confirmed" ||
@@ -779,7 +850,9 @@ if (SEND_REQUESTED) {
       .getBlockHeight({ commitment: "confirmed" })
       .send();
     if (blockHeight > latestBlockhash.lastValidBlockHeight) {
-      throw new Error("Private Payment-open transaction expired before confirmation");
+      throw new Error(
+        "Private Payment-open transaction expired before confirmation",
+      );
     }
     await wait(500);
   }
@@ -791,10 +864,10 @@ if (SEND_REQUESTED) {
   let confirmedDeposit;
   for (let poll = 0; poll < 40; poll += 1) {
     const response = await privateRpc
-      .getMultipleAccounts(
-        [payment, sender.deposit],
-        { commitment: "confirmed", encoding: "base64" },
-      )
+      .getMultipleAccounts([payment, sender.deposit], {
+        commitment: "confirmed",
+        encoding: "base64",
+      })
       .send();
     const [paymentAccount, depositAccount] = response.value;
     if (
@@ -822,7 +895,7 @@ if (SEND_REQUESTED) {
       if (
         decodedPayment.initialized &&
         decodedPayment.amount === PAYMENT_AMOUNT &&
-        decodedDeposit.available === 2_000_000n &&
+        decodedDeposit.available === PRIVATE_POST_OPEN_AVAILABLE &&
         decodedDeposit.locked === PRIVATE_POST_OPEN_LOCKED
       ) {
         confirmedPayment = decodedPayment;
@@ -833,7 +906,9 @@ if (SEND_REQUESTED) {
     await wait(250);
   }
   if (!confirmedPayment || !confirmedDeposit) {
-    throw new Error("Confirmed private Payment open was not visible in authorized readback");
+    throw new Error(
+      "Confirmed private Payment open was not visible in authorized readback",
+    );
   }
   if (
     !bytesEqual(confirmedPayment.paymentId, PAYMENT_ID) ||
@@ -855,21 +930,23 @@ if (SEND_REQUESTED) {
     confirmedDeposit.automationPaused ||
     confirmedDeposit.version !== 1
   ) {
-    throw new Error("Confirmed private Payment or Deposit failed state validation");
+    throw new Error(
+      "Confirmed private Payment or Deposit failed state validation",
+    );
   }
 
   const [publicAfterSend, unauthenticatedAfterSend] = await Promise.all([
     baseRpc
-      .getMultipleAccounts(
-        [payment, sender.deposit, sender.vaultUsdcAta],
-        { commitment: "finalized", encoding: "base64" },
-      )
+      .getMultipleAccounts([payment, sender.deposit, sender.vaultUsdcAta], {
+        commitment: "finalized",
+        encoding: "base64",
+      })
       .send(),
     unauthenticatedRpc
-      .getMultipleAccounts(
-        [payment, sender.deposit, recipientDeposit],
-        { commitment: "confirmed", encoding: "base64" },
-      )
+      .getMultipleAccounts([payment, sender.deposit, recipientDeposit], {
+        commitment: "confirmed",
+        encoding: "base64",
+      })
       .send(),
   ]);
   const [publicPaymentAfter, publicDepositAfter, publicVaultAfter] =
@@ -895,7 +972,9 @@ if (SEND_REQUESTED) {
     ) ||
     unauthenticatedAfterSend.value.some((account) => account !== null)
   ) {
-    throw new Error("Private Payment open leaked into public or unauthenticated state");
+    throw new Error(
+      "Private Payment open leaked into public or unauthenticated state",
+    );
   }
 
   console.log(

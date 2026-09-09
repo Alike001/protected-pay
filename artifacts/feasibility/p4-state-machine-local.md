@@ -1693,3 +1693,51 @@ Independent transaction status: finalized, Ok
 ```
 
 The next gate is sender TEE authentication and signed, non-broadcast simulation of atomic `open_payment` plus a six-iteration Payment-only Crank schedule. It must show 1 test USDC moving only inside private accounting, no acknowledgement, both aggregate Deposits excluded from the scheduled instruction, and no persistent state change.
+
+## Version-2.1 fresh expiry atomic-open simulation
+
+The private-open runner was extended with a mutually exclusive expiry mode, isolated payment and memo fixtures, and its own authentication and future broadcast approval flags. Unlike the earlier settlement fixture, this mode validates the actual post-settlement sender state: 2 test USDC available with nonce 4 before opening, then 1 test USDC available with nonce 5 in the simulated result.
+
+After explicit continuation approval, the sender authenticated through the MagicBlock Query Filtering Service. Authenticated preflight could read the fresh Payment and sender's own Deposit, while unauthenticated reads of the Payment and both Deposits returned null. The runner then signed one 494-byte transaction containing `open_payment` and `schedule_payment` and submitted it only to signature-verified simulation.
+
+Simulation atomically placed 1 test USDC into individual Payment escrow and registered six 60-second `advance_payment` iterations against only the shared Payment. The scheduled instruction contained neither aggregate Deposit. Post-simulation private, public, vault, and unauthenticated reads proved that no state persisted.
+
+```text
+Private ER: https://devnet-tee.magicblock.app
+Sender / fee payer: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Recipient: HfoFUr4dJWHFR4cPBPoyJpABZzNuQ5DoPMdgGsvKkRMr
+Payment: AvZwmKkHPvrTHk3qyYCeuTAg2jSSrYM9tLEm4gKUD759
+Payment label: protected-pay:phase4:v2.1:expiry:1
+Public finalized preflight slot: 495812344
+Private authenticated preflight slot: 301089688
+Signed simulation slot: 301089705
+Prepared, unbroadcast signature: 2DmQ6henr45BVD3z8wot4adCuURjoQvhaMohKmHeGXZypdTGPk2DgCJHgUtAMrK6RTmAQQAa5LmPeDhbxEvyUgDy
+Instructions: open_payment, schedule_payment
+Transaction size: 494 bytes
+Simulation error: none
+Compute units consumed: 28,270
+Payment amount in simulated escrow: 1.000000 test USDC
+Payment status / initialized / version: Created / true / 2
+Transient simulation task ID: 1788987864977
+Execution interval / iterations: 60,000 ms / 6
+Settlement / expiry deltas: 60 / 300 seconds
+Scheduled target: advance_payment
+Scheduled writable accounts: Payment only
+Scheduled target requires signer: false
+Sender private available: 2.000000 -> 1.000000 test USDC
+Sender next-payment nonce: 4 -> 5
+Sender locked aggregate field: 0
+Recipient Deposit included in transaction: false
+Sender Deposit included in scheduled instruction: false
+SPL token movement: none; private accounting only
+Protected data found in logs: false
+Private state persisted after simulation: false
+Public state changed after simulation: false
+Vault balance changed after simulation: false
+Unauthenticated protected reads: all null
+Bearer token printed or persisted: false
+Hardware attestation independently verified: false
+Transaction broadcast: false
+```
+
+This proves construction and privacy behavior only. The live Payment remains unopened with the sender still holding 2 test USDC available. A separate explicit approval must authorize fresh TEE authentication, a new task ID and blockhash, another signature-verified simulation, and broadcast of the atomic transaction. No recipient acknowledgement will be sent during this expiry proof.
