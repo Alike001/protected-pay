@@ -15,9 +15,10 @@ function getPreviewMode() {
 export default function App() {
   const [proofOpen, setProofOpen] = useState(false);
   const preview = getPreviewMode();
+  const paymentReference = new URLSearchParams(window.location.search).get("payment");
 
-  if (preview === "recipient") {
-    return <><RecipientPayment preview onShowProof={() => setProofOpen(true)} /><ProofDrawer open={proofOpen} onClose={() => setProofOpen(false)} /></>;
+  if (preview === "recipient" || paymentReference) {
+    return <><RecipientPayment preview={preview === "recipient"} paymentReference={paymentReference} onShowProof={() => setProofOpen(true)} /><ProofDrawer open={proofOpen} onClose={() => setProofOpen(false)} /></>;
   }
 
   return (

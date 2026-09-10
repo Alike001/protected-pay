@@ -9,7 +9,7 @@ import {
 } from "@solana/kit-plugin-wallet/react";
 import { useState } from "react";
 import { shortAddress } from "../lib/format";
-import type { AppClient } from "../providers";
+import type { AppClient } from "../client";
 
 export function WalletControl() {
   const client = useClient<AppClient>();

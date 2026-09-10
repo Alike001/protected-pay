@@ -8,6 +8,12 @@ export function formatUsdc(value: bigint) {
   return fraction ? `${whole}.${fraction}` : whole.toString();
 }
 
+export function parseUsdc(value: string) {
+  if (!/^\d+(\.\d{0,6})?$/.test(value.trim())) throw new Error("Enter a valid USDC amount with up to six decimals.");
+  const [whole, fraction = ""] = value.trim().split(".");
+  return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0"));
+}
+
 export function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong. Please try again.";
 }

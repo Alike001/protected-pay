@@ -13,14 +13,19 @@ import {
 } from "lucide-react";
 import { useClient } from "@solana/react";
 import { useConnectedWallet } from "@solana/kit-plugin-wallet/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { address } from "@solana/kit";
+import { PaymentStatus } from "../../../clients/ts/src/generated/types/paymentStatus";
 import { usePrivateBalance } from "../../hooks/usePrivateBalance";
-import { formatUsdc, shortAddress } from "../../lib/format";
-import type { AppClient } from "../../providers";
+import { usePrivatePayment } from "../../hooks/usePrivatePayment";
+import { formatUsdc, parseUsdc, shortAddress } from "../../lib/format";
+import { cancelProtectedPayment, fundFirstProtectedBalance, openProtectedPayment, type PaymentStage, type ProtectedPaymentReceipt } from "../../lib/paymentWorkflow";
+import type { AppClient } from "../../client";
 
 const PREVIEW_RECIPIENT = "Hfo7LD2FQk6o1uTiVMXvcfvuw9NT1J1qdQSZP9aG3qvQ";
 
 type Props = { preview: boolean; onShowProof: () => void };
+type SavedPayment = { paymentReference: string; memoEnvelope: string | null; sender: string };
 
 function ApprovalSteps() {
   return (
@@ -32,7 +37,19 @@ function ApprovalSteps() {
   );
 }
 
-function ReviewDialog({ recipient, amount, note, onClose }: { recipient: string; amount: string; note: string; onClose: () => void }) {
+function ReviewDialog({ recipient, amount, note, onClose, onConfirm, preview, receipt, stage, workflowError }: {
+  recipient: string;
+  amount: string;
+  note: string;
+  onClose: () => void;
+  onConfirm: () => void;
+  preview: boolean;
+  receipt: ProtectedPaymentReceipt | null;
+  stage: PaymentStage | "idle" | "error";
+  workflowError: string | null;
+}) {
+  const busy = stage === "preparing" || stage === "authenticating" || stage === "opening";
+  const actionLabel = stage === "preparing" ? "Preparing on Solana…" : stage === "authenticating" ? "Unlocking private session…" : stage === "opening" ? "Protecting payment…" : "Confirm and protect";
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <section className="review-modal" role="dialog" aria-modal="true" aria-label="Review payment" onMouseDown={(event) => event.stopPropagation()}>
@@ -43,10 +60,15 @@ function ReviewDialog({ recipient, amount, note, onClose }: { recipient: string;
           <div><dt>Amount</dt><dd>{amount} test USDC</dd></div>
           <div><dt>Private note</dt><dd>{note || "No note"}</dd></div>
         </dl>
-        <ApprovalSteps />
+        {!receipt && <ApprovalSteps />}
         <div className="privacy-note"><LockKeyhole size={16} /><span>Amount, note, and live status stay private while pending. Wallets and timing are public.</span></div>
-        <button className="primary-action" disabled>Transaction adapter coming next</button>
-        <small className="approval-disclosure">Two transaction approvals. A one-time session signature may also appear.</small>
+        {workflowError && <p className="workflow-error" role="alert">{workflowError}</p>}
+        {receipt ? (
+          <div className="workflow-success"><Check size={18} /><div><strong>Payment protected</strong><small>Share the recipient link from the active-payment card.</small></div></div>
+        ) : (
+          <button className="primary-action" onClick={onConfirm} disabled={preview || busy}>{preview ? "Preview only" : actionLabel}</button>
+        )}
+        {!receipt && <small className="approval-disclosure">Two transaction approvals. A one-time session signature may also appear.</small>}
       </section>
     </div>
   );
@@ -57,7 +79,7 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
     <section className="panel active-payment">
       <div className="section-heading"><div><h2>Active payment</h2><span className="status pending">Pending</span></div><button className="text-button">View details <ArrowUpRight size={15} /></button></div>
       <div className="payment-focus">
-        <div className="countdown-ring"><strong>08:42</strong><span>remaining</span></div>
+        <div className="countdown-ring"><strong>03:42</strong><span>remaining</span></div>
         <div className="payment-summary">
           <span className="eyeline">Waiting for recipient</span>
           <strong>125.00 <small>test USDC</small></strong>
@@ -81,15 +103,135 @@ export function SenderDashboard({ preview, onShowProof }: Props) {
   const [note, setNote] = useState(preview ? "Invoice #184" : "");
   const [reviewing, setReviewing] = useState(false);
   const [undoing, setUndoing] = useState(false);
+  const [workflowStage, setWorkflowStage] = useState<PaymentStage | "idle" | "error">("idle");
+  const [workflowError, setWorkflowError] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<ProtectedPaymentReceipt | null>(null);
+  const [canceling, setCanceling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [recovered, setRecovered] = useState(false);
+  const [fundingOpen, setFundingOpen] = useState(false);
+  const [fundingAmount, setFundingAmount] = useState("1");
+  const [funding, setFunding] = useState(false);
+  const [fundingError, setFundingError] = useState<string | null>(null);
+  const [savedPayment, setSavedPayment] = useState<SavedPayment | null>(null);
+  const livePayment = usePrivatePayment(privateBalance.privateClient, walletAddress, savedPayment?.paymentReference ?? null);
+
+  useEffect(() => {
+    if (!walletAddress || preview) {
+      setSavedPayment(null);
+      return;
+    }
+    try {
+      const raw = sessionStorage.getItem(`protected-pay:last-payment:${walletAddress}`);
+      const parsed = raw ? JSON.parse(raw) as SavedPayment : null;
+      setSavedPayment(parsed?.sender === walletAddress ? parsed : null);
+    } catch {
+      setSavedPayment(null);
+    }
+  }, [preview, walletAddress]);
 
   const validation = useMemo(() => {
-    if (recipient.length < 32) return "Enter a valid Solana wallet.";
-    const numericAmount = Number(amount);
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) return "Enter an amount greater than zero.";
+    try {
+      const parsedRecipient = address(recipient);
+      if (walletAddress && parsedRecipient === walletAddress) return "Choose a recipient other than your own wallet.";
+    } catch {
+      return "Enter a valid Solana wallet.";
+    }
+    let parsedAmount: bigint;
+    try { parsedAmount = parseUsdc(amount); } catch { return "Enter an amount greater than zero with up to six decimals."; }
+    if (parsedAmount <= 0n) return "Enter an amount greater than zero.";
+    if (!preview && privateBalance.balance && parsedAmount > privateBalance.balance.available) return "Amount exceeds your protected balance.";
     return null;
-  }, [recipient, amount]);
+  }, [amount, preview, privateBalance.balance, recipient, walletAddress]);
 
   const shownBalance = preview ? 2840_500000n : privateBalance.balance?.available ?? 0n;
+  const activeReference = receipt?.paymentReference ?? savedPayment?.paymentReference ?? null;
+  const activeEnvelope = receipt?.memoEnvelope ?? savedPayment?.memoEnvelope ?? null;
+  const recipientLink = activeReference ? `${window.location.origin}/?payment=${activeReference}${activeEnvelope ? `#memo=${encodeURIComponent(activeEnvelope)}` : ""}` : null;
+  const activeAmount = livePayment.payment ? formatUsdc(livePayment.payment.amount) : amount;
+  const activeRecipient = livePayment.payment?.recipient ?? recipient;
+  const canUndoActive = Boolean(receipt) || livePayment.payment?.status === PaymentStatus.Created || livePayment.payment?.status === PaymentStatus.Acknowledged;
+  const canRecoverExpired = livePayment.payment?.status === PaymentStatus.Expired && livePayment.payment.sender === walletAddress;
+
+  async function confirmPayment() {
+    if (!connected?.signer || !walletAddress || validation) return;
+    setWorkflowError(null);
+    try {
+      setWorkflowStage("authenticating");
+      const privateClient = privateBalance.privateClient ?? await privateBalance.unlock();
+      const result = await openProtectedPayment(
+        client,
+        privateClient,
+        connected.signer,
+        address(walletAddress),
+        { amount: parseUsdc(amount), memo: note, recipient: address(recipient) },
+        setWorkflowStage,
+      );
+      setReceipt(result);
+      const saved = { paymentReference: result.paymentReference, memoEnvelope: result.memoEnvelope, sender: walletAddress } satisfies SavedPayment;
+      setSavedPayment(saved);
+      try { sessionStorage.setItem(`protected-pay:last-payment:${walletAddress}`, JSON.stringify(saved)); } catch { /* persistence is best effort */ }
+      await privateBalance.refresh();
+    } catch (error) {
+      setWorkflowStage("error");
+      setWorkflowError(error instanceof Error ? error.message : "The payment could not be protected.");
+    }
+  }
+
+  async function confirmUndo() {
+    const paymentAddress = receipt?.payment ?? livePayment.paymentAddress;
+    if (preview || !paymentAddress || !connected?.signer || !walletAddress || !privateBalance.privateClient) return;
+    setCanceling(true);
+    setCancelError(null);
+    try {
+      await cancelProtectedPayment(privateBalance.privateClient, connected.signer, address(walletAddress), paymentAddress);
+      await privateBalance.refresh();
+      setReceipt(null);
+      setSavedPayment(null);
+      try { sessionStorage.removeItem(`protected-pay:last-payment:${walletAddress}`); } catch { /* persistence is best effort */ }
+      setRecovered(true);
+      setUndoing(false);
+      setReviewing(false);
+      setWorkflowStage("idle");
+    } catch (error) {
+      setCancelError(error instanceof Error ? error.message : "The payment could not be recovered.");
+    } finally {
+      setCanceling(false);
+    }
+  }
+
+  async function recoverExpiredPayment() {
+    if (!canRecoverExpired) return;
+    setCanceling(true);
+    setCancelError(null);
+    try {
+      await livePayment.claim();
+      await privateBalance.refresh();
+      setSavedPayment(null);
+      try { sessionStorage.removeItem(`protected-pay:last-payment:${walletAddress}`); } catch { /* persistence is best effort */ }
+      setRecovered(true);
+    } catch (error) {
+      setCancelError(error instanceof Error ? error.message : "The expired payment could not be recovered.");
+    } finally {
+      setCanceling(false);
+    }
+  }
+
+  async function confirmFunding() {
+    if (!connected?.signer || !walletAddress) return;
+    setFunding(true);
+    setFundingError(null);
+    try {
+      await fundFirstProtectedBalance(client, connected.signer, address(walletAddress), parseUsdc(fundingAmount));
+      await new Promise((resolve) => window.setTimeout(resolve, 1_500));
+      await privateBalance.refresh();
+      setFundingOpen(false);
+    } catch (error) {
+      setFundingError(error instanceof Error ? error.message : "The protected balance could not be funded.");
+    } finally {
+      setFunding(false);
+    }
+  }
 
   return (
     <main className="dashboard-main">
@@ -114,23 +256,27 @@ export function SenderDashboard({ preview, onShowProof }: Props) {
             <button className="secondary-action" onClick={privateBalance.unlock} disabled={privateBalance.status === "loading"}>
               <LockKeyhole size={16} /> {privateBalance.status === "loading" ? "Unlocking…" : "Unlock private balance"}
             </button>
-          ) : (
-            <button className="secondary-action" disabled={!connected && !preview}><ArrowDownToLine size={16} /> Withdraw</button>
-          )}
+          ) : preview ? <button className="secondary-action"><ArrowDownToLine size={16} /> Withdraw</button>
+            : connected && privateBalance.status === "ready" && shownBalance === 0n ? <button className="secondary-action" onClick={() => setFundingOpen(true)}><ArrowDownToLine size={16} /> Set up balance</button>
+            : null}
           {privateBalance.message && !preview && <p className="inline-message">{privateBalance.message}</p>}
         </section>
 
         <section className="panel composer-panel">
           <div className="panel-label"><span>Send protected payment</span><Clock3 size={18} /></div>
           <label>Recipient wallet<input value={recipient} onChange={(event) => setRecipient(event.target.value)} placeholder="Solana wallet address" disabled={!preview && !connected} /></label>
-          <div className="form-row"><label>Amount<div className="input-suffix"><input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" placeholder="0.00" disabled={!preview && !connected} /><span>USDC</span></div></label><label>Safety window<select defaultValue="10" disabled={!preview && !connected}><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="30">30 minutes</option></select></label></div>
+          <div className="form-row"><label>Amount<div className="input-suffix"><input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" placeholder="0.00" disabled={!preview && !connected} /><span>USDC</span></div></label><label>Settlement window<select value="60" disabled><option value="60">1 minute after opening</option></select></label></div>
           <label>Private note <span className="optional">Optional</span><input value={note} maxLength={64} onChange={(event) => setNote(event.target.value)} placeholder="What is this for?" disabled={!preview && !connected} /></label>
           <button className="primary-action" onClick={() => !validation && setReviewing(true)} disabled={Boolean(validation) || (!preview && !connected)}>Review payment <ArrowUpRight size={16} /></button>
           <small className="privacy-copy"><LockKeyhole size={14} /> Amount, note, and live status stay private while pending.</small>
         </section>
       </div>
 
-      {preview ? <ActivePayment onUndo={() => setUndoing(true)} /> : (
+      {preview ? <ActivePayment onUndo={() => setUndoing(true)} /> : receipt || livePayment.payment ? (
+        <section className="panel confirmed-payment"><span className="icon-tile success">{canRecoverExpired ? <RotateCcw size={19} /> : <Check size={19} />}</span><div><h2>{canRecoverExpired ? "Payment expired safely" : receipt ? "Payment protected" : "Payment restored"}</h2><p>{canRecoverExpired ? "The recipient did not acknowledge in time. Recover the test USDC to your protected balance." : ` ${activeAmount} test USDC to ${shortAddress(activeRecipient, 7)}. Share this private-view link with the intended recipient.`}</p>{recipientLink && <code>{recipientLink}</code>}{cancelError && <p className="workflow-error" role="alert">{cancelError}</p>}</div><div className="confirmed-actions"><button className="secondary-action" onClick={() => recipientLink && navigator.clipboard.writeText(recipientLink)} disabled={!recipientLink}>Copy link</button>{canUndoActive && <button className="undo-button" onClick={() => setUndoing(true)}><RotateCcw size={16} /> Undo</button>}{canRecoverExpired && <button className="undo-button" onClick={recoverExpiredPayment} disabled={canceling}><RotateCcw size={16} /> {canceling ? "Recovering…" : "Recover expired"}</button>}</div></section>
+      ) : recovered ? (
+        <section className="panel confirmed-payment recovered-payment"><span className="icon-tile success"><RotateCcw size={19} /></span><div><h2>Payment recovered</h2><p>The test USDC is back in your protected balance.</p></div></section>
+      ) : (
         <section className="panel empty-payment"><span className="icon-tile"><Clock3 size={19} /></span><div><h2>No active payment</h2><p>Protected payments that need your attention will appear here.</p></div></section>
       )}
 
@@ -147,8 +293,9 @@ export function SenderDashboard({ preview, onShowProof }: Props) {
       </section>
 
       <footer className="disclosure"><strong>Test funds only.</strong><span>Built on Solana Devnet with a MagicBlock private execution layer.</span></footer>
-      {reviewing && <ReviewDialog recipient={recipient} amount={amount} note={note} onClose={() => setReviewing(false)} />}
-      {undoing && <div className="modal-backdrop" onMouseDown={() => setUndoing(false)}><section className="review-modal compact" role="dialog" onMouseDown={(event) => event.stopPropagation()}><span className="danger-icon"><RotateCcw size={20} /></span><h2>Undo this payment?</h2><p>The 125.00 test USDC returns to your protected balance. The recipient will no longer be able to claim it.</p><button className="danger-action" disabled>Recovery adapter coming next</button><button className="secondary-action" onClick={() => setUndoing(false)}>Keep payment</button></section></div>}
+      {reviewing && <ReviewDialog recipient={recipient} amount={amount} note={note} onClose={() => setReviewing(false)} onConfirm={confirmPayment} preview={preview} receipt={receipt} stage={workflowStage} workflowError={workflowError} />}
+      {undoing && <div className="modal-backdrop" onMouseDown={() => !canceling && setUndoing(false)}><section className="review-modal compact" role="dialog" aria-modal="true" aria-label="Undo payment" onMouseDown={(event) => event.stopPropagation()}><span className="danger-icon"><RotateCcw size={20} /></span><h2>Undo this payment?</h2><p>The {activeAmount} test USDC returns to your protected balance. The recipient will no longer be able to claim it.</p>{cancelError && <p className="workflow-error" role="alert">{cancelError}</p>}<button className="danger-action" onClick={confirmUndo} disabled={preview || !(receipt?.payment ?? livePayment.paymentAddress) || canceling}>{preview ? "Preview only" : canceling ? "Recovering…" : "Undo and recover funds"}</button><button className="secondary-action" onClick={() => setUndoing(false)} disabled={canceling}>Keep payment</button></section></div>}
+      {fundingOpen && <div className="modal-backdrop" onMouseDown={() => !funding && setFundingOpen(false)}><section className="review-modal compact" role="dialog" aria-modal="true" aria-label="Set up protected balance" onMouseDown={(event) => event.stopPropagation()}><span className="icon-tile large"><WalletCards size={22} /></span><h2>Set up protected balance</h2><p>Move Circle Devnet USDC into Protected Pay and make the balance private in one transaction.</p><label className="modal-field">Amount<div className="input-suffix"><input value={fundingAmount} onChange={(event) => setFundingAmount(event.target.value)} inputMode="decimal" /><span>USDC</span></div></label>{fundingError && <p className="workflow-error" role="alert">{fundingError}</p>}<button className="primary-action" onClick={confirmFunding} disabled={funding}>{funding ? "Setting up…" : "Approve setup and deposit"}</button><a className="faucet-link" href="https://faucet.circle.com/" target="_blank" rel="noreferrer">Need test USDC? Open Circle Faucet <ArrowUpRight size={14} /></a><button className="secondary-action" onClick={() => setFundingOpen(false)} disabled={funding}>Cancel</button></section></div>}
     </main>
   );
 }

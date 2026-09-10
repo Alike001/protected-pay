@@ -104,6 +104,7 @@
     "build:web": "tsc -p tsconfig.app.json && vite build",
     "preview:web": "vite preview",
     "typecheck:web": "tsc -p tsconfig.app.json --noEmit",
+    "p5:verify:browser-payment-builder": "tsx scripts/p5-verify-browser-payment-builder.ts",
     "p4:legacy:diagnose:expired-schedule": "tsx scripts/p4-auth-simulate-expired-schedule.ts --approved-p4-tee-auth-expired-schedule-simulation",
     "p4:auth:simulate:expired-cancel": "tsx scripts/p4-auth-simulate-expired-cancel.ts --approved-p4-tee-auth-expired-cancel-simulation",
     "p4:send:expired-cancel": "tsx scripts/p4-auth-simulate-expired-cancel.ts --approved-p4-tee-auth-expired-cancel-simulation --send --approved-p4-expired-payment-cancellation",

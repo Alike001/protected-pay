@@ -106,6 +106,8 @@ The protected-time rail is the recurring product shape. It appears as a circular
 - `ProofDrawer`: program, clusters, signatures, privacy boundary, and explorer links.
 - `Disclosure`: test-only and exact privacy limits.
 
+The browser implementation encrypts note text with AES-GCM and carries the ciphertext and key in the recipient URL fragment, which browsers do not send to the host. The authenticated Payment stores only the note hash and the recipient verifies decrypted text against it. This keeps note text off public and Private ER state, but possession of the complete recipient link is sufficient to decrypt it; copy must not describe the note as wallet-gated.
+
 ## Required states
 
 - disconnected landing;
