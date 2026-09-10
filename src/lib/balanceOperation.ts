@@ -278,7 +278,7 @@ export async function runBalanceOperation(
       onStage("waiting-return");
       publicState = await waitForPublicReturn(publicClient, deposit, checkpoint.wallet);
     } else if (action === "return") {
-      const plan = await buildBalanceReturnInstructions(transactionSigner, wallet);
+      const plan = await buildBalanceReturnInstructions(privateClient, wallet);
       onStage("returning");
       await sendPrivateTransaction(privateClient, plan.instructions, (prepared) => update({ returnTransaction: savedTransaction(prepared) }));
       onStage("waiting-return");

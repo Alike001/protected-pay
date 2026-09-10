@@ -1,5 +1,5 @@
 import { ExternalLink, LockKeyhole, X } from "lucide-react";
-import { DEVNET_RPC, PRIVATE_ER_ORIGIN, PROGRAM_ID, PROOF } from "../lib/constants";
+import { MAGIC_ROUTER_RPC, PRIVATE_ER_ORIGIN, PROGRAM_ID, PROOF } from "../lib/constants";
 import { shortAddress } from "../lib/format";
 
 export function ProofDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -14,7 +14,7 @@ export function ProofDrawer({ open, onClose }: { open: boolean; onClose: () => v
         <p className="muted">Evidence from the completed Devnet round trip. No wallet secret or private session token is shown.</p>
         <dl className="proof-list">
           <div><dt>Program</dt><dd><code>{shortAddress(PROGRAM_ID, 6)}</code></dd></div>
-          <div><dt>Public cluster</dt><dd><code>{new URL(DEVNET_RPC).host}</code></dd></div>
+          <div><dt>Public router</dt><dd><code>{new URL(MAGIC_ROUTER_RPC).host}</code></dd></div>
           <div><dt>Private runtime</dt><dd><code>{new URL(PRIVATE_ER_ORIGIN).host}</code></dd></div>
           <div><dt>Private closeout slot</dt><dd>{PROOF.privateSlot}</dd></div>
           <div><dt>Public finalized slot</dt><dd>{PROOF.publicSlot}</dd></div>

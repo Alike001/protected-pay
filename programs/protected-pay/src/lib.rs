@@ -15,6 +15,7 @@ use ephemeral_rollups_sdk::consts::PERMISSION_PROGRAM_ID;
 use ephemeral_rollups_sdk::cpi::DelegateConfig;
 use ephemeral_rollups_sdk::ephem::MagicIntentBundleBuilder;
 use magicblock_magic_program_api::{args::ScheduleTaskArgs, instruction::MagicBlockInstruction};
+use session_keys::{session_auth_or, Session, SessionError, SessionToken};
 use solana_sha256_hasher::hashv;
 
 declare_id!("w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk");
@@ -345,6 +346,10 @@ pub mod protected_pay {
     }
 
     /// Writes the private terms only after the shell has been delegated.
+    #[session_auth_or(
+        ctx.accounts.sender.key() == ctx.accounts.payer.key(),
+        ProtectedPayError::Unauthorized
+    )]
     pub fn open_payment(
         ctx: Context<OpenPayment>,
         payment_id: [u8; 32],
@@ -368,12 +373,20 @@ pub mod protected_pay {
     }
 
     /// Recipient confirmation never needs access to the sender's Deposit.
+    #[session_auth_or(
+        ctx.accounts.recipient.key() == ctx.accounts.payer.key(),
+        ProtectedPayError::Unauthorized
+    )]
     pub fn acknowledge_payment(ctx: Context<AcknowledgePayment>) -> Result<()> {
         ctx.accounts
             .payment
             .acknowledge(ctx.accounts.recipient.key(), Clock::get()?.unix_timestamp)
     }
 
+    #[session_auth_or(
+        ctx.accounts.sender.key() == ctx.accounts.payer.key(),
+        ProtectedPayError::Unauthorized
+    )]
     pub fn cancel_payment(ctx: Context<CancelPayment>) -> Result<()> {
         ctx.accounts
             .payment
@@ -386,6 +399,10 @@ pub mod protected_pay {
         ctx.accounts.payment.advance(Clock::get()?.unix_timestamp)
     }
 
+    #[session_auth_or(
+        ctx.accounts.claimant.key() == ctx.accounts.payer.key(),
+        ProtectedPayError::Unauthorized
+    )]
     pub fn claim_payment(ctx: Context<ClaimPayment>) -> Result<()> {
         ctx.accounts.payment.claim(
             &mut ctx.accounts.claimant_deposit,
@@ -395,8 +412,12 @@ pub mod protected_pay {
 
     /// Registers the same stored, signer-free instruction for repeated Crank
     /// execution. The task cannot supply or change payment terms.
-    pub fn schedule_payment<'info>(
-        ctx: Context<'info, SchedulePayment<'info>>,
+    #[session_auth_or(
+        ctx.accounts.sender.key() == ctx.accounts.payer.key(),
+        ProtectedPayError::Unauthorized
+    )]
+    pub fn schedule_payment(
+        ctx: Context<SchedulePayment>,
         payment_id: [u8; 32],
         args: SchedulePaymentArgs,
     ) -> Result<()> {
@@ -419,7 +440,7 @@ pub mod protected_pay {
             payment.payment_id == payment_id,
             ProtectedPayError::InvalidPaymentShell
         );
-        payment.validate_schedule_actor(ctx.accounts.payer.key())?;
+        payment.validate_schedule_actor(ctx.accounts.sender.key())?;
         require!(
             payment.task_id == 0,
             ProtectedPayError::TaskAlreadyScheduled
@@ -462,10 +483,18 @@ pub mod protected_pay {
         Ok(())
     }
 
+    #[session_auth_or(
+        ctx.accounts.sender.key() == ctx.accounts.payer.key(),
+        ProtectedPayError::Unauthorized
+    )]
     pub fn redact_terminal_payment(ctx: Context<RedactTerminalPayment>) -> Result<()> {
         ctx.accounts.payment.redact()
     }
 
+    #[session_auth_or(
+        ctx.accounts.sender.key() == ctx.accounts.payer.key(),
+        ProtectedPayError::Unauthorized
+    )]
     pub fn commit_and_undelegate_payment(ctx: Context<CommitAndUndelegatePayment>) -> Result<()> {
         require!(
             ctx.accounts.payment.redacted,
@@ -678,6 +707,10 @@ pub mod protected_pay {
         Ok(())
     }
 
+    #[session_auth_or(
+        ctx.accounts.user.key() == ctx.accounts.payer.key(),
+        ProtectedPayError::Unauthorized
+    )]
     pub fn commit_and_undelegate_deposit(ctx: Context<CommitAndUndelegateDeposit>) -> Result<()> {
         MagicIntentBundleBuilder::new(
             ctx.accounts.payer.to_account_info(),
@@ -1041,10 +1074,15 @@ pub struct DelegatePayment<'info> {
     pub payment: UncheckedAccount<'info>,
 }
 
-#[derive(Accounts)]
+#[derive(Accounts, Session)]
 #[instruction(payment_id: [u8; 32])]
 pub struct OpenPayment<'info> {
-    pub sender: Signer<'info>,
+    /// CHECK: The Payment shell and Deposit constraints bind this authority.
+    pub sender: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[session(signer = payer, authority = sender.key())]
+    pub session_token: Option<Account<'info, SessionToken>>,
     #[account(seeds = [CONFIG_SEED], bump = config.bump)]
     pub config: Account<'info, Config>,
     #[account(
@@ -1070,9 +1108,14 @@ pub struct OpenPayment<'info> {
     pub sender_deposit: Account<'info, Deposit>,
 }
 
-#[derive(Accounts)]
+#[derive(Accounts, Session)]
 pub struct AcknowledgePayment<'info> {
-    pub recipient: Signer<'info>,
+    /// CHECK: The Payment constraint binds this authority to its recipient.
+    pub recipient: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[session(signer = payer, authority = recipient.key())]
+    pub session_token: Option<Account<'info, SessionToken>>,
     #[account(
         mut,
         seeds = [PAYMENT_SEED, payment.payment_id.as_ref()],
@@ -1082,9 +1125,14 @@ pub struct AcknowledgePayment<'info> {
     pub payment: Account<'info, Payment>,
 }
 
-#[derive(Accounts)]
+#[derive(Accounts, Session)]
 pub struct CancelPayment<'info> {
-    pub sender: Signer<'info>,
+    /// CHECK: The Payment constraint binds this authority to its sender.
+    pub sender: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[session(signer = payer, authority = sender.key())]
+    pub session_token: Option<Account<'info, SessionToken>>,
     #[account(
         mut,
         seeds = [PAYMENT_SEED, payment.payment_id.as_ref()],
@@ -1116,9 +1164,14 @@ pub struct AdvancePayment<'info> {
     pub payment: Account<'info, Payment>,
 }
 
-#[derive(Accounts)]
+#[derive(Accounts, Session)]
 pub struct ClaimPayment<'info> {
-    pub claimant: Signer<'info>,
+    /// CHECK: Payment::claim verifies the claimant's terminal entitlement.
+    pub claimant: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[session(signer = payer, authority = claimant.key())]
+    pub session_token: Option<Account<'info, SessionToken>>,
     #[account(
         mut,
         seeds = [PAYMENT_SEED, payment.payment_id.as_ref()],
@@ -1146,7 +1199,7 @@ pub struct SchedulePaymentArgs {
     pub iterations: i64,
 }
 
-#[derive(Accounts)]
+#[derive(Accounts, Session)]
 #[instruction(payment_id: [u8; 32])]
 pub struct SchedulePayment<'info> {
     /// CHECK: Fixed to MagicBlock's scheduling program used by the pinned SDK.
@@ -1154,6 +1207,10 @@ pub struct SchedulePayment<'info> {
     pub magic_program: UncheckedAccount<'info>,
     #[account(mut)]
     pub payer: Signer<'info>,
+    /// CHECK: Payment::validate_schedule_actor binds this authority to the sender.
+    pub sender: UncheckedAccount<'info>,
+    #[session(signer = payer, authority = sender.key())]
+    pub session_token: Option<Account<'info, SessionToken>>,
     /// CHECK: Deserialized and relationship-checked before the scheduler CPI.
     #[account(mut, seeds = [PAYMENT_SEED, payment_id.as_ref()], bump)]
     pub payment: UncheckedAccount<'info>,
@@ -1162,9 +1219,14 @@ pub struct SchedulePayment<'info> {
     pub program: UncheckedAccount<'info>,
 }
 
-#[derive(Accounts)]
+#[derive(Accounts, Session)]
 pub struct RedactTerminalPayment<'info> {
-    pub sender: Signer<'info>,
+    /// CHECK: The Payment constraint binds this authority to its sender.
+    pub sender: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[session(signer = payer, authority = sender.key())]
+    pub session_token: Option<Account<'info, SessionToken>>,
     #[account(
         mut,
         seeds = [PAYMENT_SEED, payment.payment_id.as_ref()],
@@ -1175,11 +1237,14 @@ pub struct RedactTerminalPayment<'info> {
 }
 
 #[commit]
-#[derive(Accounts)]
+#[derive(Accounts, Session)]
 pub struct CommitAndUndelegatePayment<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
-    pub sender: Signer<'info>,
+    /// CHECK: The Payment constraint binds this authority to its sender.
+    pub sender: UncheckedAccount<'info>,
+    #[session(signer = payer, authority = sender.key())]
+    pub session_token: Option<Account<'info, SessionToken>>,
     #[account(
         mut,
         seeds = [PAYMENT_SEED, payment.payment_id.as_ref()],
@@ -1376,11 +1441,14 @@ pub struct DelegateDeposit<'info> {
 }
 
 #[commit]
-#[derive(Accounts)]
+#[derive(Accounts, Session)]
 pub struct CommitAndUndelegateDeposit<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
-    pub user: Signer<'info>,
+    /// CHECK: Deposit::user and PDA constraints bind this authority.
+    pub user: UncheckedAccount<'info>,
+    #[session(signer = payer, authority = user.key())]
+    pub session_token: Option<Account<'info, SessionToken>>,
     #[account(
         mut,
         seeds = [DEPOSIT_SEED, user.key().as_ref(), deposit.token_mint.as_ref()],

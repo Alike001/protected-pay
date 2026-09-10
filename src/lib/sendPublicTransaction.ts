@@ -2,6 +2,7 @@ import {
   appendTransactionMessageInstructions,
   assertIsTransactionWithBlockhashLifetime,
   assertIsTransactionWithinSizeLimit,
+  compileTransaction,
   createTransactionMessage,
   getBase64EncodedWireTransaction,
   getSignatureFromTransaction,
@@ -27,13 +28,35 @@ export async function sendPublicTransaction(
   instructions: readonly Instruction[],
   onPrepared?: (prepared: PreparedTransaction) => void,
 ) {
-  const { value: latestBlockhash } = await client.rpc.getLatestBlockhash({ commitment: "confirmed" }).send();
+  // Use a finalized Devnet blockhash so Phantom's separate simulation backend
+  // has already observed it. A merely-confirmed blockhash can be valid on our
+  // RPC while still appearing unknown to a lagging wallet simulation node.
+  const { value: latestBlockhash } = await client.rpc.getLatestBlockhash({ commitment: "finalized" }).send();
   const message = pipe(
-    createTransactionMessage({ version: 0 }),
+    // MagicBlock's browser starter uses legacy public transactions. Phantom
+    // supports both formats, but legacy avoids a wallet-preview compatibility
+    // edge here and this transaction does not need address lookup tables.
+    createTransactionMessage({ version: "legacy" }),
     (current) => setTransactionMessageFeePayerSigner(transactionSigner, current),
     (current) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, current),
     (current) => appendTransactionMessageInstructions(instructions, current),
   );
+
+  // Preflight against the app's configured Solana endpoint before opening the
+  // wallet. The placeholder signature cannot be verified yet, so this first
+  // simulation checks only the message and program execution.
+  const unsignedWire = getBase64EncodedWireTransaction(compileTransaction(message));
+  const unsignedSimulation = await client.rpc.simulateTransaction(unsignedWire, {
+    commitment: "confirmed",
+    encoding: "base64",
+    innerInstructions: true,
+    replaceRecentBlockhash: false,
+    sigVerify: false,
+  }).send();
+  if (unsignedSimulation.value.err !== null) {
+    throw new Error(`Solana transaction preflight failed before wallet approval: ${JSON.stringify(unsignedSimulation.value.err)}`);
+  }
+
   const signedTransaction = await signTransactionMessageWithSigners(message);
   assertIsTransactionWithBlockhashLifetime(signedTransaction);
   assertIsTransactionWithinSizeLimit(signedTransaction);

@@ -26,10 +26,11 @@ import {
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
-  type ReadonlySignerAccount,
+  type ReadonlyAccount,
   type ReadonlyUint8Array,
   type TransactionSigner,
   type WritableAccount,
+  type WritableSignerAccount,
 } from "@solana/kit";
 import {
   getAccountMetaFactory,
@@ -50,6 +51,8 @@ export function getCancelPaymentDiscriminatorBytes(): ReadonlyUint8Array {
 export type CancelPaymentInstruction<
   TProgram extends string = typeof PROTECTED_PAY_PROGRAM_ADDRESS,
   TAccountSender extends string | AccountMeta<string> = string,
+  TAccountPayer extends string | AccountMeta<string> = string,
+  TAccountSessionToken extends string | AccountMeta<string> = string,
   TAccountPayment extends string | AccountMeta<string> = string,
   TAccountSenderDeposit extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
@@ -58,9 +61,15 @@ export type CancelPaymentInstruction<
   InstructionWithAccounts<
     [
       TAccountSender extends string
-        ? ReadonlySignerAccount<TAccountSender> &
-            AccountSignerMeta<TAccountSender>
+        ? ReadonlyAccount<TAccountSender>
         : TAccountSender,
+      TAccountPayer extends string
+        ? WritableSignerAccount<TAccountPayer> &
+            AccountSignerMeta<TAccountPayer>
+        : TAccountPayer,
+      TAccountSessionToken extends string
+        ? ReadonlyAccount<TAccountSessionToken>
+        : TAccountSessionToken,
       TAccountPayment extends string
         ? WritableAccount<TAccountPayment>
         : TAccountPayment,
@@ -102,22 +111,30 @@ export function getCancelPaymentInstructionDataCodec(): FixedSizeCodec<
 
 export type CancelPaymentInput<
   TAccountSender extends string = string,
+  TAccountPayer extends string = string,
+  TAccountSessionToken extends string = string,
   TAccountPayment extends string = string,
   TAccountSenderDeposit extends string = string,
 > = {
-  sender: TransactionSigner<TAccountSender>;
+  sender: Address<TAccountSender>;
+  payer: TransactionSigner<TAccountPayer>;
+  sessionToken?: Address<TAccountSessionToken>;
   payment: Address<TAccountPayment>;
   senderDeposit: Address<TAccountSenderDeposit>;
 };
 
 export function getCancelPaymentInstruction<
   TAccountSender extends string,
+  TAccountPayer extends string,
+  TAccountSessionToken extends string,
   TAccountPayment extends string,
   TAccountSenderDeposit extends string,
   TProgramAddress extends Address = typeof PROTECTED_PAY_PROGRAM_ADDRESS,
 >(
   input: CancelPaymentInput<
     TAccountSender,
+    TAccountPayer,
+    TAccountSessionToken,
     TAccountPayment,
     TAccountSenderDeposit
   >,
@@ -125,6 +142,8 @@ export function getCancelPaymentInstruction<
 ): CancelPaymentInstruction<
   TProgramAddress,
   TAccountSender,
+  TAccountPayer,
+  TAccountSessionToken,
   TAccountPayment,
   TAccountSenderDeposit
 > {
@@ -135,6 +154,8 @@ export function getCancelPaymentInstruction<
   // Original accounts.
   const originalAccounts = {
     sender: { value: input.sender ?? null, isWritable: false },
+    payer: { value: input.payer ?? null, isWritable: true },
+    sessionToken: { value: input.sessionToken ?? null, isWritable: false },
     payment: { value: input.payment ?? null, isWritable: true },
     senderDeposit: { value: input.senderDeposit ?? null, isWritable: true },
   };
@@ -147,6 +168,8 @@ export function getCancelPaymentInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("sender", accounts.sender),
+      getAccountMeta("payer", accounts.payer),
+      getAccountMeta("sessionToken", accounts.sessionToken),
       getAccountMeta("payment", accounts.payment),
       getAccountMeta("senderDeposit", accounts.senderDeposit),
     ],
@@ -155,6 +178,8 @@ export function getCancelPaymentInstruction<
   } as CancelPaymentInstruction<
     TProgramAddress,
     TAccountSender,
+    TAccountPayer,
+    TAccountSessionToken,
     TAccountPayment,
     TAccountSenderDeposit
   >);
@@ -167,8 +192,10 @@ export type ParsedCancelPaymentInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     sender: TAccountMetas[0];
-    payment: TAccountMetas[1];
-    senderDeposit: TAccountMetas[2];
+    payer: TAccountMetas[1];
+    sessionToken?: TAccountMetas[2] | undefined;
+    payment: TAccountMetas[3];
+    senderDeposit: TAccountMetas[4];
   };
   data: CancelPaymentInstructionData;
 };
@@ -181,12 +208,12 @@ export function parseCancelPaymentInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedCancelPaymentInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 3) {
+  if (instruction.accounts.length < 5) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 3,
+        expectedAccountMetas: 5,
       },
     );
   }
@@ -196,10 +223,18 @@ export function parseCancelPaymentInstruction<
     accountIndex += 1;
     return accountMeta;
   };
+  const getNextOptionalAccount = () => {
+    const accountMeta = getNextAccount();
+    return accountMeta.address === PROTECTED_PAY_PROGRAM_ADDRESS
+      ? undefined
+      : accountMeta;
+  };
   return {
     programAddress: instruction.programAddress,
     accounts: {
       sender: getNextAccount(),
+      payer: getNextAccount(),
+      sessionToken: getNextOptionalAccount(),
       payment: getNextAccount(),
       senderDeposit: getNextAccount(),
     },

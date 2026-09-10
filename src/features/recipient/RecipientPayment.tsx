@@ -4,12 +4,14 @@ import { useConnectedWallet } from "@solana/kit-plugin-wallet/react";
 import { useEffect, useMemo, useState } from "react";
 import { PaymentStatus } from "../../../clients/ts/src/generated/types/paymentStatus";
 import { BrandMark } from "../../components/BrandMark";
+import { WorkflowIssueNotice } from "../../components/WorkflowIssueNotice";
 import { WalletControl } from "../../components/WalletControl";
 import { usePrivateBalance } from "../../hooks/usePrivateBalance";
 import { usePrivatePayment } from "../../hooks/usePrivatePayment";
 import { formatUsdc, shortAddress } from "../../lib/format";
 import { decryptMemoFromRecipientLink, memoEnvelopeFromLocation } from "../../lib/memoEnvelope";
 import { onboardRecipientDeposit } from "../../lib/paymentWorkflow";
+import { workflowIssueFrom, type WorkflowIssue } from "../../lib/workflowIssue";
 import type { AppClient } from "../../client";
 
 const PREVIEW_SENDER = "6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn";
@@ -29,7 +31,7 @@ export function RecipientPayment({ preview, paymentReference, onShowProof }: { p
   const privateSession = usePrivateBalance(client, preview ? null : walletAddress);
   const live = usePrivatePayment(privateSession.privateClient, walletAddress, preview ? null : paymentReference ?? null);
   const [now, setNow] = useState(Date.now());
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<WorkflowIssue | null>(null);
   const [privateMemo, setPrivateMemo] = useState<string | null>(null);
   const payment = live.payment;
 
@@ -50,7 +52,7 @@ export function RecipientPayment({ preview, paymentReference, onShowProof }: { p
     }
     void decryptMemoFromRecipientLink(envelope, payment.memoHash)
       .then(setPrivateMemo)
-      .catch((error: unknown) => setActionError(error instanceof Error ? error.message : "The private note could not be opened."));
+      .catch((error: unknown) => setActionError(workflowIssueFrom(error, "The private note could not be opened.")));
   }, [payment]);
 
   const deadline = payment ? (payment.status === PaymentStatus.Acknowledged ? payment.settleAfter : payment.expiresAt) : null;
@@ -62,7 +64,24 @@ export function RecipientPayment({ preview, paymentReference, onShowProof }: { p
   const visible = preview || Boolean(payment);
   const amount = preview ? "125.00" : payment ? formatUsdc(payment.amount) : "—";
   const sender = preview ? PREVIEW_SENDER : payment?.sender ?? null;
-  const primaryMessage = useMemo(() => actionError ?? live.message ?? privateSession.message, [actionError, live.message, privateSession.message]);
+  const primaryIssue = useMemo(() => {
+    if (actionError) return actionError;
+    const message = live.message ?? privateSession.message;
+    return message ? workflowIssueFrom(message, "The private payment needs attention.") : null;
+  }, [actionError, live.message, privateSession.message]);
+
+  useEffect(() => {
+    if (primaryIssue?.kind === "authentication-expired") privateSession.lock();
+  }, [primaryIssue?.kind, privateSession.lock]);
+
+  async function unlockPayment() {
+    setActionError(null);
+    try {
+      await privateSession.unlock();
+    } catch (error) {
+      setActionError(workflowIssueFrom(error, "The private payment could not be unlocked."));
+    }
+  }
 
   async function performAction() {
     setActionError(null);
@@ -73,7 +92,9 @@ export function RecipientPayment({ preview, paymentReference, onShowProof }: { p
         await live.acknowledge();
       }
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "The payment action failed.");
+      const issue = workflowIssueFrom(error, "The payment action failed.");
+      if (issue.kind === "authentication-expired") privateSession.lock();
+      setActionError(issue);
     }
   }
 
@@ -86,11 +107,11 @@ export function RecipientPayment({ preview, paymentReference, onShowProof }: { p
         {!preview && !paymentReference && <div className="access-message"><strong>Payment reference missing</strong><p>Ask the sender to copy the complete recipient link.</p></div>}
         {!preview && paymentReference && !connected && <div className="access-message"><strong>Connect the recipient wallet</strong><p>Private payment fields remain hidden until the intended wallet authenticates.</p></div>}
         {!preview && connected && privateSession.status !== "ready" && (
-          <button className="unlock-payment" onClick={() => void privateSession.unlock().catch(() => undefined)} disabled={privateSession.status === "loading"}>
+          <button className="unlock-payment" onClick={() => void unlockPayment()} disabled={privateSession.status === "loading"}>
             <LockKeyhole size={17} /> {privateSession.status === "loading" ? "Unlocking private payment…" : "Unlock private payment"}
           </button>
         )}
-        {primaryMessage && !visible && <p className="workflow-error" role="alert">{primaryMessage}</p>}
+        {primaryIssue && !visible && <WorkflowIssueNotice issue={primaryIssue} />}
 
         <section className={`recipient-card ${!visible ? "concealed" : ""}`}>
           <div className="recipient-countdown"><div className="countdown-ring large"><strong>{countdown}</strong><span>remaining</span></div><span className="status pending">{statusLabel}</span></div>
@@ -101,7 +122,7 @@ export function RecipientPayment({ preview, paymentReference, onShowProof }: { p
           </dl>
           <button className="primary-action" onClick={performAction} disabled={!preview && ((!canAcknowledge && !canClaim) || live.status === "acting")}>{preview ? "Acknowledge payment" : actionLabel}</button>
           <p className="action-explainer">Acknowledging confirms this wallet is ready to receive. First-time recipients may see one setup approval before the private acknowledgement.</p>
-          {primaryMessage && visible && <p className="workflow-error" role="alert">{primaryMessage}</p>}
+          {primaryIssue && visible && <WorkflowIssueNotice issue={primaryIssue} />}
         </section>
 
         <section className="recipient-timeline">

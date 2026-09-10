@@ -985,7 +985,7 @@ export type ProtectedPayPluginAccounts = {
 
 export type ProtectedPayPluginInstructions = {
   acknowledgePayment: (
-    input: AcknowledgePaymentInput,
+    input: MakeOptional<AcknowledgePaymentInput, "payer">,
   ) => ReturnType<typeof getAcknowledgePaymentInstruction> &
     SelfPlanAndSendFunctions;
   advanceCrankProbe: (
@@ -997,11 +997,11 @@ export type ProtectedPayPluginInstructions = {
   ) => ReturnType<typeof getAdvancePaymentInstruction> &
     SelfPlanAndSendFunctions;
   cancelPayment: (
-    input: CancelPaymentInput,
+    input: MakeOptional<CancelPaymentInput, "payer">,
   ) => ReturnType<typeof getCancelPaymentInstruction> &
     SelfPlanAndSendFunctions;
   claimPayment: (
-    input: ClaimPaymentInput,
+    input: MakeOptional<ClaimPaymentInput, "payer">,
   ) => ReturnType<typeof getClaimPaymentInstruction> & SelfPlanAndSendFunctions;
   commitAndUndelegateCrankProbe: (
     input: MakeOptional<CommitAndUndelegateCrankProbeAsyncInput, "payer">,
@@ -1072,7 +1072,7 @@ export type ProtectedPayPluginInstructions = {
   ) => ReturnType<typeof getInitializeVaultInstructionAsync> &
     SelfPlanAndSendFunctions;
   openPayment: (
-    input: OpenPaymentAsyncInput,
+    input: MakeOptional<OpenPaymentAsyncInput, "payer">,
   ) => ReturnType<typeof getOpenPaymentInstructionAsync> &
     SelfPlanAndSendFunctions;
   preparePayment: (
@@ -1084,7 +1084,7 @@ export type ProtectedPayPluginInstructions = {
   ) => ReturnType<typeof getProcessUndelegationInstruction> &
     SelfPlanAndSendFunctions;
   redactTerminalPayment: (
-    input: RedactTerminalPaymentInput,
+    input: MakeOptional<RedactTerminalPaymentInput, "payer">,
   ) => ReturnType<typeof getRedactTerminalPaymentInstruction> &
     SelfPlanAndSendFunctions;
   scheduleCrankProbe: (
@@ -1148,7 +1148,10 @@ export function protectedPayProgram() {
           acknowledgePayment: (input) =>
             addSelfPlanAndSendFunctions(
               client,
-              getAcknowledgePaymentInstruction(input),
+              getAcknowledgePaymentInstruction({
+                ...input,
+                payer: input.payer ?? client.payer,
+              }),
             ),
           advanceCrankProbe: (input) =>
             addSelfPlanAndSendFunctions(
@@ -1163,12 +1166,18 @@ export function protectedPayProgram() {
           cancelPayment: (input) =>
             addSelfPlanAndSendFunctions(
               client,
-              getCancelPaymentInstruction(input),
+              getCancelPaymentInstruction({
+                ...input,
+                payer: input.payer ?? client.payer,
+              }),
             ),
           claimPayment: (input) =>
             addSelfPlanAndSendFunctions(
               client,
-              getClaimPaymentInstruction(input),
+              getClaimPaymentInstruction({
+                ...input,
+                payer: input.payer ?? client.payer,
+              }),
             ),
           commitAndUndelegateCrankProbe: (input) =>
             addSelfPlanAndSendFunctions(
@@ -1300,7 +1309,10 @@ export function protectedPayProgram() {
           openPayment: (input) =>
             addSelfPlanAndSendFunctions(
               client,
-              getOpenPaymentInstructionAsync(input),
+              getOpenPaymentInstructionAsync({
+                ...input,
+                payer: input.payer ?? client.payer,
+              }),
             ),
           preparePayment: (input) =>
             addSelfPlanAndSendFunctions(
@@ -1318,7 +1330,10 @@ export function protectedPayProgram() {
           redactTerminalPayment: (input) =>
             addSelfPlanAndSendFunctions(
               client,
-              getRedactTerminalPaymentInstruction(input),
+              getRedactTerminalPaymentInstruction({
+                ...input,
+                payer: input.payer ?? client.payer,
+              }),
             ),
           scheduleCrankProbe: (input) =>
             addSelfPlanAndSendFunctions(

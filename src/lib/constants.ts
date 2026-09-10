@@ -1,5 +1,6 @@
 export const PROGRAM_ID = "w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk";
-export const DEVNET_RPC = "https://api.devnet.solana.com";
+export const SOLANA_DEVNET_RPC = "https://api.devnet.solana.com";
+export const MAGIC_ROUTER_RPC = "https://devnet-router.magicblock.app";
 export const PRIVATE_ER_ORIGIN = "https://devnet-tee.magicblock.app";
 export const USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 export const USDC_DECIMALS = 6;

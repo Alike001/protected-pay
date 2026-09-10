@@ -26,10 +26,11 @@ import {
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
-  type ReadonlySignerAccount,
+  type ReadonlyAccount,
   type ReadonlyUint8Array,
   type TransactionSigner,
   type WritableAccount,
+  type WritableSignerAccount,
 } from "@solana/kit";
 import {
   getAccountMetaFactory,
@@ -49,6 +50,8 @@ export function getRedactTerminalPaymentDiscriminatorBytes(): ReadonlyUint8Array
 export type RedactTerminalPaymentInstruction<
   TProgram extends string = typeof PROTECTED_PAY_PROGRAM_ADDRESS,
   TAccountSender extends string | AccountMeta<string> = string,
+  TAccountPayer extends string | AccountMeta<string> = string,
+  TAccountSessionToken extends string | AccountMeta<string> = string,
   TAccountPayment extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
@@ -56,9 +59,15 @@ export type RedactTerminalPaymentInstruction<
   InstructionWithAccounts<
     [
       TAccountSender extends string
-        ? ReadonlySignerAccount<TAccountSender> &
-            AccountSignerMeta<TAccountSender>
+        ? ReadonlyAccount<TAccountSender>
         : TAccountSender,
+      TAccountPayer extends string
+        ? WritableSignerAccount<TAccountPayer> &
+            AccountSignerMeta<TAccountPayer>
+        : TAccountPayer,
+      TAccountSessionToken extends string
+        ? ReadonlyAccount<TAccountSessionToken>
+        : TAccountSessionToken,
       TAccountPayment extends string
         ? WritableAccount<TAccountPayment>
         : TAccountPayment,
@@ -100,22 +109,35 @@ export function getRedactTerminalPaymentInstructionDataCodec(): FixedSizeCodec<
 
 export type RedactTerminalPaymentInput<
   TAccountSender extends string = string,
+  TAccountPayer extends string = string,
+  TAccountSessionToken extends string = string,
   TAccountPayment extends string = string,
 > = {
-  sender: TransactionSigner<TAccountSender>;
+  sender: Address<TAccountSender>;
+  payer: TransactionSigner<TAccountPayer>;
+  sessionToken?: Address<TAccountSessionToken>;
   payment: Address<TAccountPayment>;
 };
 
 export function getRedactTerminalPaymentInstruction<
   TAccountSender extends string,
+  TAccountPayer extends string,
+  TAccountSessionToken extends string,
   TAccountPayment extends string,
   TProgramAddress extends Address = typeof PROTECTED_PAY_PROGRAM_ADDRESS,
 >(
-  input: RedactTerminalPaymentInput<TAccountSender, TAccountPayment>,
+  input: RedactTerminalPaymentInput<
+    TAccountSender,
+    TAccountPayer,
+    TAccountSessionToken,
+    TAccountPayment
+  >,
   config?: { programAddress?: TProgramAddress },
 ): RedactTerminalPaymentInstruction<
   TProgramAddress,
   TAccountSender,
+  TAccountPayer,
+  TAccountSessionToken,
   TAccountPayment
 > {
   // Program address.
@@ -125,6 +147,8 @@ export function getRedactTerminalPaymentInstruction<
   // Original accounts.
   const originalAccounts = {
     sender: { value: input.sender ?? null, isWritable: false },
+    payer: { value: input.payer ?? null, isWritable: true },
+    sessionToken: { value: input.sessionToken ?? null, isWritable: false },
     payment: { value: input.payment ?? null, isWritable: true },
   };
   const accounts = originalAccounts as Record<
@@ -136,6 +160,8 @@ export function getRedactTerminalPaymentInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("sender", accounts.sender),
+      getAccountMeta("payer", accounts.payer),
+      getAccountMeta("sessionToken", accounts.sessionToken),
       getAccountMeta("payment", accounts.payment),
     ],
     data: getRedactTerminalPaymentInstructionDataEncoder().encode({}),
@@ -143,6 +169,8 @@ export function getRedactTerminalPaymentInstruction<
   } as RedactTerminalPaymentInstruction<
     TProgramAddress,
     TAccountSender,
+    TAccountPayer,
+    TAccountSessionToken,
     TAccountPayment
   >);
 }
@@ -154,7 +182,9 @@ export type ParsedRedactTerminalPaymentInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     sender: TAccountMetas[0];
-    payment: TAccountMetas[1];
+    payer: TAccountMetas[1];
+    sessionToken?: TAccountMetas[2] | undefined;
+    payment: TAccountMetas[3];
   };
   data: RedactTerminalPaymentInstructionData;
 };
@@ -167,12 +197,12 @@ export function parseRedactTerminalPaymentInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedRedactTerminalPaymentInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 2) {
+  if (instruction.accounts.length < 4) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 2,
+        expectedAccountMetas: 4,
       },
     );
   }
@@ -182,9 +212,20 @@ export function parseRedactTerminalPaymentInstruction<
     accountIndex += 1;
     return accountMeta;
   };
+  const getNextOptionalAccount = () => {
+    const accountMeta = getNextAccount();
+    return accountMeta.address === PROTECTED_PAY_PROGRAM_ADDRESS
+      ? undefined
+      : accountMeta;
+  };
   return {
     programAddress: instruction.programAddress,
-    accounts: { sender: getNextAccount(), payment: getNextAccount() },
+    accounts: {
+      sender: getNextAccount(),
+      payer: getNextAccount(),
+      sessionToken: getNextOptionalAccount(),
+      payment: getNextAccount(),
+    },
     data: getRedactTerminalPaymentInstructionDataDecoder().decode(
       instruction.data,
     ),

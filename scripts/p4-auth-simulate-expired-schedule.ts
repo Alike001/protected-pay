@@ -331,6 +331,7 @@ const instructions = [
   await getSchedulePaymentInstructionAsync({
     magicProgram: MAGIC_PROGRAM,
     payer: authentication.signerClient.identity,
+    sender: AUTHORITY,
     payment,
     program: PROGRAM_ID,
     paymentId: PAYMENT_ID,

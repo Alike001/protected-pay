@@ -63,7 +63,7 @@ export function BalanceOperationDialog({
         {working && <div className="workflow-progress"><ShieldCheck size={17} /><span>{STAGE_LABELS[stage]}</span></div>}
         {error && <p className="workflow-error" role="alert">{error}</p>}
         <button className="primary-action" onClick={onSubmit} disabled={working || preview}>{preview ? "Preview only" : working ? STAGE_LABELS[stage] : checkpoint ? "Resume safely" : withdrawing ? "Review and withdraw" : "Review and add funds"}</button>
-        <small className="approval-disclosure">Up to two transaction approvals. A private-session message may appear first.</small>
+        <small className="approval-disclosure">Up to two custody approvals. A new private session also needs one login message and one bounded-session approval.</small>
         {checkpoint && !hasSignedCheckpoint && <button className="discard-operation" onClick={onDiscard}>Discard unsent operation</button>}
       </section>
     </div>

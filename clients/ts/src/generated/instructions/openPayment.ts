@@ -29,10 +29,10 @@ import {
   type InstructionWithAccounts,
   type InstructionWithData,
   type ReadonlyAccount,
-  type ReadonlySignerAccount,
   type ReadonlyUint8Array,
   type TransactionSigner,
   type WritableAccount,
+  type WritableSignerAccount,
 } from "@solana/kit";
 import {
   getAccountMetaFactory,
@@ -55,6 +55,8 @@ export function getOpenPaymentDiscriminatorBytes(): ReadonlyUint8Array {
 export type OpenPaymentInstruction<
   TProgram extends string = typeof PROTECTED_PAY_PROGRAM_ADDRESS,
   TAccountSender extends string | AccountMeta<string> = string,
+  TAccountPayer extends string | AccountMeta<string> = string,
+  TAccountSessionToken extends string | AccountMeta<string> = string,
   TAccountConfig extends string | AccountMeta<string> = string,
   TAccountPayment extends string | AccountMeta<string> = string,
   TAccountSenderDeposit extends string | AccountMeta<string> = string,
@@ -64,9 +66,15 @@ export type OpenPaymentInstruction<
   InstructionWithAccounts<
     [
       TAccountSender extends string
-        ? ReadonlySignerAccount<TAccountSender> &
-            AccountSignerMeta<TAccountSender>
+        ? ReadonlyAccount<TAccountSender>
         : TAccountSender,
+      TAccountPayer extends string
+        ? WritableSignerAccount<TAccountPayer> &
+            AccountSignerMeta<TAccountPayer>
+        : TAccountPayer,
+      TAccountSessionToken extends string
+        ? ReadonlyAccount<TAccountSessionToken>
+        : TAccountSessionToken,
       TAccountConfig extends string
         ? ReadonlyAccount<TAccountConfig>
         : TAccountConfig,
@@ -126,11 +134,15 @@ export function getOpenPaymentInstructionDataCodec(): FixedSizeCodec<
 
 export type OpenPaymentAsyncInput<
   TAccountSender extends string = string,
+  TAccountPayer extends string = string,
+  TAccountSessionToken extends string = string,
   TAccountConfig extends string = string,
   TAccountPayment extends string = string,
   TAccountSenderDeposit extends string = string,
 > = {
-  sender: TransactionSigner<TAccountSender>;
+  sender: Address<TAccountSender>;
+  payer: TransactionSigner<TAccountPayer>;
+  sessionToken?: Address<TAccountSessionToken>;
   config?: Address<TAccountConfig>;
   payment?: Address<TAccountPayment>;
   senderDeposit: Address<TAccountSenderDeposit>;
@@ -141,6 +153,8 @@ export type OpenPaymentAsyncInput<
 
 export async function getOpenPaymentInstructionAsync<
   TAccountSender extends string,
+  TAccountPayer extends string,
+  TAccountSessionToken extends string,
   TAccountConfig extends string,
   TAccountPayment extends string,
   TAccountSenderDeposit extends string,
@@ -148,6 +162,8 @@ export async function getOpenPaymentInstructionAsync<
 >(
   input: OpenPaymentAsyncInput<
     TAccountSender,
+    TAccountPayer,
+    TAccountSessionToken,
     TAccountConfig,
     TAccountPayment,
     TAccountSenderDeposit
@@ -157,6 +173,8 @@ export async function getOpenPaymentInstructionAsync<
   OpenPaymentInstruction<
     TProgramAddress,
     TAccountSender,
+    TAccountPayer,
+    TAccountSessionToken,
     TAccountConfig,
     TAccountPayment,
     TAccountSenderDeposit
@@ -169,6 +187,8 @@ export async function getOpenPaymentInstructionAsync<
   // Original accounts.
   const originalAccounts = {
     sender: { value: input.sender ?? null, isWritable: false },
+    payer: { value: input.payer ?? null, isWritable: true },
+    sessionToken: { value: input.sessionToken ?? null, isWritable: false },
     config: { value: input.config ?? null, isWritable: false },
     payment: { value: input.payment ?? null, isWritable: true },
     senderDeposit: { value: input.senderDeposit ?? null, isWritable: true },
@@ -201,6 +221,8 @@ export async function getOpenPaymentInstructionAsync<
   return Object.freeze({
     accounts: [
       getAccountMeta("sender", accounts.sender),
+      getAccountMeta("payer", accounts.payer),
+      getAccountMeta("sessionToken", accounts.sessionToken),
       getAccountMeta("config", accounts.config),
       getAccountMeta("payment", accounts.payment),
       getAccountMeta("senderDeposit", accounts.senderDeposit),
@@ -212,6 +234,8 @@ export async function getOpenPaymentInstructionAsync<
   } as OpenPaymentInstruction<
     TProgramAddress,
     TAccountSender,
+    TAccountPayer,
+    TAccountSessionToken,
     TAccountConfig,
     TAccountPayment,
     TAccountSenderDeposit
@@ -220,11 +244,15 @@ export async function getOpenPaymentInstructionAsync<
 
 export type OpenPaymentInput<
   TAccountSender extends string = string,
+  TAccountPayer extends string = string,
+  TAccountSessionToken extends string = string,
   TAccountConfig extends string = string,
   TAccountPayment extends string = string,
   TAccountSenderDeposit extends string = string,
 > = {
-  sender: TransactionSigner<TAccountSender>;
+  sender: Address<TAccountSender>;
+  payer: TransactionSigner<TAccountPayer>;
+  sessionToken?: Address<TAccountSessionToken>;
   config: Address<TAccountConfig>;
   payment: Address<TAccountPayment>;
   senderDeposit: Address<TAccountSenderDeposit>;
@@ -235,6 +263,8 @@ export type OpenPaymentInput<
 
 export function getOpenPaymentInstruction<
   TAccountSender extends string,
+  TAccountPayer extends string,
+  TAccountSessionToken extends string,
   TAccountConfig extends string,
   TAccountPayment extends string,
   TAccountSenderDeposit extends string,
@@ -242,6 +272,8 @@ export function getOpenPaymentInstruction<
 >(
   input: OpenPaymentInput<
     TAccountSender,
+    TAccountPayer,
+    TAccountSessionToken,
     TAccountConfig,
     TAccountPayment,
     TAccountSenderDeposit
@@ -250,6 +282,8 @@ export function getOpenPaymentInstruction<
 ): OpenPaymentInstruction<
   TProgramAddress,
   TAccountSender,
+  TAccountPayer,
+  TAccountSessionToken,
   TAccountConfig,
   TAccountPayment,
   TAccountSenderDeposit
@@ -261,6 +295,8 @@ export function getOpenPaymentInstruction<
   // Original accounts.
   const originalAccounts = {
     sender: { value: input.sender ?? null, isWritable: false },
+    payer: { value: input.payer ?? null, isWritable: true },
+    sessionToken: { value: input.sessionToken ?? null, isWritable: false },
     config: { value: input.config ?? null, isWritable: false },
     payment: { value: input.payment ?? null, isWritable: true },
     senderDeposit: { value: input.senderDeposit ?? null, isWritable: true },
@@ -277,6 +313,8 @@ export function getOpenPaymentInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("sender", accounts.sender),
+      getAccountMeta("payer", accounts.payer),
+      getAccountMeta("sessionToken", accounts.sessionToken),
       getAccountMeta("config", accounts.config),
       getAccountMeta("payment", accounts.payment),
       getAccountMeta("senderDeposit", accounts.senderDeposit),
@@ -288,6 +326,8 @@ export function getOpenPaymentInstruction<
   } as OpenPaymentInstruction<
     TProgramAddress,
     TAccountSender,
+    TAccountPayer,
+    TAccountSessionToken,
     TAccountConfig,
     TAccountPayment,
     TAccountSenderDeposit
@@ -301,9 +341,11 @@ export type ParsedOpenPaymentInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     sender: TAccountMetas[0];
-    config: TAccountMetas[1];
-    payment: TAccountMetas[2];
-    senderDeposit: TAccountMetas[3];
+    payer: TAccountMetas[1];
+    sessionToken?: TAccountMetas[2] | undefined;
+    config: TAccountMetas[3];
+    payment: TAccountMetas[4];
+    senderDeposit: TAccountMetas[5];
   };
   data: OpenPaymentInstructionData;
 };
@@ -316,12 +358,12 @@ export function parseOpenPaymentInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedOpenPaymentInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 4) {
+  if (instruction.accounts.length < 6) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 4,
+        expectedAccountMetas: 6,
       },
     );
   }
@@ -331,10 +373,18 @@ export function parseOpenPaymentInstruction<
     accountIndex += 1;
     return accountMeta;
   };
+  const getNextOptionalAccount = () => {
+    const accountMeta = getNextAccount();
+    return accountMeta.address === PROTECTED_PAY_PROGRAM_ADDRESS
+      ? undefined
+      : accountMeta;
+  };
   return {
     programAddress: instruction.programAddress,
     accounts: {
       sender: getNextAccount(),
+      payer: getNextAccount(),
+      sessionToken: getNextOptionalAccount(),
       config: getNextAccount(),
       payment: getNextAccount(),
       senderDeposit: getNextAccount(),

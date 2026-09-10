@@ -485,6 +485,7 @@ const scheduleInstruction = ATOMIC_SCHEDULE
   ? await getSchedulePaymentInstructionAsync({
       magicProgram: MAGIC_PROGRAM,
       payer: authentication.signerClient.identity,
+      sender: AUTHORITY,
       payment,
       program: PROGRAM_ID,
       paymentId: PAYMENT_ID,
@@ -495,7 +496,7 @@ const scheduleInstruction = ATOMIC_SCHEDULE
   : null;
 if (
   scheduleInstruction &&
-  (scheduleInstruction.accounts.length !== 4 ||
+  (scheduleInstruction.accounts.length !== 6 ||
     scheduleInstruction.accounts.some(
       (account) =>
         account.address === sender.deposit ||
@@ -509,7 +510,8 @@ const instructions = [
     units: ATOMIC_SCHEDULE ? 400_000 : 200_000,
   }),
   await getOpenPaymentInstructionAsync({
-    sender: authentication.signerClient.identity,
+    sender: AUTHORITY,
+    payer: authentication.signerClient.identity,
     config: sender.config,
     payment,
     senderDeposit: sender.deposit,

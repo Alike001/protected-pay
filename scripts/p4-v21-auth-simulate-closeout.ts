@@ -328,7 +328,7 @@ const { value: latestBlockhash } = await privateRpc
   .send();
 const instruction = getCommitAndUndelegatePaymentInstruction({
   payer: authentication.signerClient.payer,
-  sender: authentication.signerClient.identity,
+  sender: AUTHORITY,
   payment: addresses.payment,
 });
 const message = pipe(

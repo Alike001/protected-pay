@@ -333,12 +333,13 @@ if (CLAIM_MODE) {
 
   const expectedTerminalCommitment = settledTerminalCommitment(paymentBefore);
   const claimInstruction = getClaimPaymentInstruction({
-    claimant: authentication.signerClient.identity,
+    claimant: V2_RECIPIENT,
+    payer: authentication.signerClient.identity,
     payment: addresses.payment,
     claimantDeposit: addresses.recipientDeposit,
   });
   if (
-    claimInstruction.accounts.length !== 3 ||
+    claimInstruction.accounts.length !== 5 ||
     claimInstruction.accounts.some(
       (account) => account.address === addresses.deposit,
     )
@@ -805,7 +806,8 @@ if (
 const instructions = [
   getSetComputeUnitLimitInstruction({ units: 100_000 }),
   getAcknowledgePaymentInstruction({
-    recipient: authentication.signerClient.identity,
+    recipient: V2_RECIPIENT,
+    payer: authentication.signerClient.identity,
     payment: addresses.payment,
   }),
 ];

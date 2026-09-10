@@ -27,7 +27,6 @@ import {
   type InstructionWithAccounts,
   type InstructionWithData,
   type ReadonlyAccount,
-  type ReadonlySignerAccount,
   type ReadonlyUint8Array,
   type TransactionSigner,
   type WritableAccount,
@@ -52,6 +51,7 @@ export type CommitAndUndelegateDepositInstruction<
   TProgram extends string = typeof PROTECTED_PAY_PROGRAM_ADDRESS,
   TAccountPayer extends string | AccountMeta<string> = string,
   TAccountUser extends string | AccountMeta<string> = string,
+  TAccountSessionToken extends string | AccountMeta<string> = string,
   TAccountDeposit extends string | AccountMeta<string> = string,
   TAccountMagicProgram extends string | AccountMeta<string> =
     "Magic11111111111111111111111111111111111111",
@@ -67,8 +67,11 @@ export type CommitAndUndelegateDepositInstruction<
             AccountSignerMeta<TAccountPayer>
         : TAccountPayer,
       TAccountUser extends string
-        ? ReadonlySignerAccount<TAccountUser> & AccountSignerMeta<TAccountUser>
+        ? ReadonlyAccount<TAccountUser>
         : TAccountUser,
+      TAccountSessionToken extends string
+        ? ReadonlyAccount<TAccountSessionToken>
+        : TAccountSessionToken,
       TAccountDeposit extends string
         ? WritableAccount<TAccountDeposit>
         : TAccountDeposit,
@@ -117,12 +120,14 @@ export function getCommitAndUndelegateDepositInstructionDataCodec(): FixedSizeCo
 export type CommitAndUndelegateDepositInput<
   TAccountPayer extends string = string,
   TAccountUser extends string = string,
+  TAccountSessionToken extends string = string,
   TAccountDeposit extends string = string,
   TAccountMagicProgram extends string = string,
   TAccountMagicContext extends string = string,
 > = {
   payer: TransactionSigner<TAccountPayer>;
-  user: TransactionSigner<TAccountUser>;
+  user: Address<TAccountUser>;
+  sessionToken?: Address<TAccountSessionToken>;
   deposit: Address<TAccountDeposit>;
   magicProgram?: Address<TAccountMagicProgram>;
   magicContext?: Address<TAccountMagicContext>;
@@ -131,6 +136,7 @@ export type CommitAndUndelegateDepositInput<
 export function getCommitAndUndelegateDepositInstruction<
   TAccountPayer extends string,
   TAccountUser extends string,
+  TAccountSessionToken extends string,
   TAccountDeposit extends string,
   TAccountMagicProgram extends string,
   TAccountMagicContext extends string,
@@ -139,6 +145,7 @@ export function getCommitAndUndelegateDepositInstruction<
   input: CommitAndUndelegateDepositInput<
     TAccountPayer,
     TAccountUser,
+    TAccountSessionToken,
     TAccountDeposit,
     TAccountMagicProgram,
     TAccountMagicContext
@@ -148,6 +155,7 @@ export function getCommitAndUndelegateDepositInstruction<
   TProgramAddress,
   TAccountPayer,
   TAccountUser,
+  TAccountSessionToken,
   TAccountDeposit,
   TAccountMagicProgram,
   TAccountMagicContext
@@ -160,6 +168,7 @@ export function getCommitAndUndelegateDepositInstruction<
   const originalAccounts = {
     payer: { value: input.payer ?? null, isWritable: true },
     user: { value: input.user ?? null, isWritable: false },
+    sessionToken: { value: input.sessionToken ?? null, isWritable: false },
     deposit: { value: input.deposit ?? null, isWritable: true },
     magicProgram: { value: input.magicProgram ?? null, isWritable: false },
     magicContext: { value: input.magicContext ?? null, isWritable: true },
@@ -184,6 +193,7 @@ export function getCommitAndUndelegateDepositInstruction<
     accounts: [
       getAccountMeta("payer", accounts.payer),
       getAccountMeta("user", accounts.user),
+      getAccountMeta("sessionToken", accounts.sessionToken),
       getAccountMeta("deposit", accounts.deposit),
       getAccountMeta("magicProgram", accounts.magicProgram),
       getAccountMeta("magicContext", accounts.magicContext),
@@ -194,6 +204,7 @@ export function getCommitAndUndelegateDepositInstruction<
     TProgramAddress,
     TAccountPayer,
     TAccountUser,
+    TAccountSessionToken,
     TAccountDeposit,
     TAccountMagicProgram,
     TAccountMagicContext
@@ -208,9 +219,10 @@ export type ParsedCommitAndUndelegateDepositInstruction<
   accounts: {
     payer: TAccountMetas[0];
     user: TAccountMetas[1];
-    deposit: TAccountMetas[2];
-    magicProgram: TAccountMetas[3];
-    magicContext: TAccountMetas[4];
+    sessionToken?: TAccountMetas[2] | undefined;
+    deposit: TAccountMetas[3];
+    magicProgram: TAccountMetas[4];
+    magicContext: TAccountMetas[5];
   };
   data: CommitAndUndelegateDepositInstructionData;
 };
@@ -223,12 +235,12 @@ export function parseCommitAndUndelegateDepositInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedCommitAndUndelegateDepositInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 5) {
+  if (instruction.accounts.length < 6) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 5,
+        expectedAccountMetas: 6,
       },
     );
   }
@@ -238,11 +250,18 @@ export function parseCommitAndUndelegateDepositInstruction<
     accountIndex += 1;
     return accountMeta;
   };
+  const getNextOptionalAccount = () => {
+    const accountMeta = getNextAccount();
+    return accountMeta.address === PROTECTED_PAY_PROGRAM_ADDRESS
+      ? undefined
+      : accountMeta;
+  };
   return {
     programAddress: instruction.programAddress,
     accounts: {
       payer: getNextAccount(),
       user: getNextAccount(),
+      sessionToken: getNextOptionalAccount(),
       deposit: getNextAccount(),
       magicProgram: getNextAccount(),
       magicContext: getNextAccount(),

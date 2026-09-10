@@ -384,7 +384,7 @@ if (Object.values(redactedReceipt).some((count) => count !== 0)) {
 
 const commitInstruction = getCommitAndUndelegatePaymentInstruction({
   payer: createNoopSigner(AUTHORITY),
-  sender: createNoopSigner(AUTHORITY),
+  sender: AUTHORITY,
   payment: addresses.payment,
 });
 const { value: latestBlockhash } = await privateRpc

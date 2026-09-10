@@ -26,10 +26,11 @@ import {
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
-  type ReadonlySignerAccount,
+  type ReadonlyAccount,
   type ReadonlyUint8Array,
   type TransactionSigner,
   type WritableAccount,
+  type WritableSignerAccount,
 } from "@solana/kit";
 import {
   getAccountMetaFactory,
@@ -49,6 +50,8 @@ export function getAcknowledgePaymentDiscriminatorBytes(): ReadonlyUint8Array {
 export type AcknowledgePaymentInstruction<
   TProgram extends string = typeof PROTECTED_PAY_PROGRAM_ADDRESS,
   TAccountRecipient extends string | AccountMeta<string> = string,
+  TAccountPayer extends string | AccountMeta<string> = string,
+  TAccountSessionToken extends string | AccountMeta<string> = string,
   TAccountPayment extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
@@ -56,9 +59,15 @@ export type AcknowledgePaymentInstruction<
   InstructionWithAccounts<
     [
       TAccountRecipient extends string
-        ? ReadonlySignerAccount<TAccountRecipient> &
-            AccountSignerMeta<TAccountRecipient>
+        ? ReadonlyAccount<TAccountRecipient>
         : TAccountRecipient,
+      TAccountPayer extends string
+        ? WritableSignerAccount<TAccountPayer> &
+            AccountSignerMeta<TAccountPayer>
+        : TAccountPayer,
+      TAccountSessionToken extends string
+        ? ReadonlyAccount<TAccountSessionToken>
+        : TAccountSessionToken,
       TAccountPayment extends string
         ? WritableAccount<TAccountPayment>
         : TAccountPayment,
@@ -97,22 +106,35 @@ export function getAcknowledgePaymentInstructionDataCodec(): FixedSizeCodec<
 
 export type AcknowledgePaymentInput<
   TAccountRecipient extends string = string,
+  TAccountPayer extends string = string,
+  TAccountSessionToken extends string = string,
   TAccountPayment extends string = string,
 > = {
-  recipient: TransactionSigner<TAccountRecipient>;
+  recipient: Address<TAccountRecipient>;
+  payer: TransactionSigner<TAccountPayer>;
+  sessionToken?: Address<TAccountSessionToken>;
   payment: Address<TAccountPayment>;
 };
 
 export function getAcknowledgePaymentInstruction<
   TAccountRecipient extends string,
+  TAccountPayer extends string,
+  TAccountSessionToken extends string,
   TAccountPayment extends string,
   TProgramAddress extends Address = typeof PROTECTED_PAY_PROGRAM_ADDRESS,
 >(
-  input: AcknowledgePaymentInput<TAccountRecipient, TAccountPayment>,
+  input: AcknowledgePaymentInput<
+    TAccountRecipient,
+    TAccountPayer,
+    TAccountSessionToken,
+    TAccountPayment
+  >,
   config?: { programAddress?: TProgramAddress },
 ): AcknowledgePaymentInstruction<
   TProgramAddress,
   TAccountRecipient,
+  TAccountPayer,
+  TAccountSessionToken,
   TAccountPayment
 > {
   // Program address.
@@ -122,6 +144,8 @@ export function getAcknowledgePaymentInstruction<
   // Original accounts.
   const originalAccounts = {
     recipient: { value: input.recipient ?? null, isWritable: false },
+    payer: { value: input.payer ?? null, isWritable: true },
+    sessionToken: { value: input.sessionToken ?? null, isWritable: false },
     payment: { value: input.payment ?? null, isWritable: true },
   };
   const accounts = originalAccounts as Record<
@@ -133,6 +157,8 @@ export function getAcknowledgePaymentInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("recipient", accounts.recipient),
+      getAccountMeta("payer", accounts.payer),
+      getAccountMeta("sessionToken", accounts.sessionToken),
       getAccountMeta("payment", accounts.payment),
     ],
     data: getAcknowledgePaymentInstructionDataEncoder().encode({}),
@@ -140,6 +166,8 @@ export function getAcknowledgePaymentInstruction<
   } as AcknowledgePaymentInstruction<
     TProgramAddress,
     TAccountRecipient,
+    TAccountPayer,
+    TAccountSessionToken,
     TAccountPayment
   >);
 }
@@ -151,7 +179,9 @@ export type ParsedAcknowledgePaymentInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     recipient: TAccountMetas[0];
-    payment: TAccountMetas[1];
+    payer: TAccountMetas[1];
+    sessionToken?: TAccountMetas[2] | undefined;
+    payment: TAccountMetas[3];
   };
   data: AcknowledgePaymentInstructionData;
 };
@@ -164,12 +194,12 @@ export function parseAcknowledgePaymentInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedAcknowledgePaymentInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 2) {
+  if (instruction.accounts.length < 4) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 2,
+        expectedAccountMetas: 4,
       },
     );
   }
@@ -179,9 +209,20 @@ export function parseAcknowledgePaymentInstruction<
     accountIndex += 1;
     return accountMeta;
   };
+  const getNextOptionalAccount = () => {
+    const accountMeta = getNextAccount();
+    return accountMeta.address === PROTECTED_PAY_PROGRAM_ADDRESS
+      ? undefined
+      : accountMeta;
+  };
   return {
     programAddress: instruction.programAddress,
-    accounts: { recipient: getNextAccount(), payment: getNextAccount() },
+    accounts: {
+      recipient: getNextAccount(),
+      payer: getNextAccount(),
+      sessionToken: getNextOptionalAccount(),
+      payment: getNextAccount(),
+    },
     data: getAcknowledgePaymentInstructionDataDecoder().decode(
       instruction.data,
     ),

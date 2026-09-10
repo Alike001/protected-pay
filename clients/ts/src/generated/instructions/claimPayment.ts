@@ -26,10 +26,11 @@ import {
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
-  type ReadonlySignerAccount,
+  type ReadonlyAccount,
   type ReadonlyUint8Array,
   type TransactionSigner,
   type WritableAccount,
+  type WritableSignerAccount,
 } from "@solana/kit";
 import {
   getAccountMetaFactory,
@@ -50,6 +51,8 @@ export function getClaimPaymentDiscriminatorBytes(): ReadonlyUint8Array {
 export type ClaimPaymentInstruction<
   TProgram extends string = typeof PROTECTED_PAY_PROGRAM_ADDRESS,
   TAccountClaimant extends string | AccountMeta<string> = string,
+  TAccountPayer extends string | AccountMeta<string> = string,
+  TAccountSessionToken extends string | AccountMeta<string> = string,
   TAccountPayment extends string | AccountMeta<string> = string,
   TAccountClaimantDeposit extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
@@ -58,9 +61,15 @@ export type ClaimPaymentInstruction<
   InstructionWithAccounts<
     [
       TAccountClaimant extends string
-        ? ReadonlySignerAccount<TAccountClaimant> &
-            AccountSignerMeta<TAccountClaimant>
+        ? ReadonlyAccount<TAccountClaimant>
         : TAccountClaimant,
+      TAccountPayer extends string
+        ? WritableSignerAccount<TAccountPayer> &
+            AccountSignerMeta<TAccountPayer>
+        : TAccountPayer,
+      TAccountSessionToken extends string
+        ? ReadonlyAccount<TAccountSessionToken>
+        : TAccountSessionToken,
       TAccountPayment extends string
         ? WritableAccount<TAccountPayment>
         : TAccountPayment,
@@ -100,22 +109,30 @@ export function getClaimPaymentInstructionDataCodec(): FixedSizeCodec<
 
 export type ClaimPaymentInput<
   TAccountClaimant extends string = string,
+  TAccountPayer extends string = string,
+  TAccountSessionToken extends string = string,
   TAccountPayment extends string = string,
   TAccountClaimantDeposit extends string = string,
 > = {
-  claimant: TransactionSigner<TAccountClaimant>;
+  claimant: Address<TAccountClaimant>;
+  payer: TransactionSigner<TAccountPayer>;
+  sessionToken?: Address<TAccountSessionToken>;
   payment: Address<TAccountPayment>;
   claimantDeposit: Address<TAccountClaimantDeposit>;
 };
 
 export function getClaimPaymentInstruction<
   TAccountClaimant extends string,
+  TAccountPayer extends string,
+  TAccountSessionToken extends string,
   TAccountPayment extends string,
   TAccountClaimantDeposit extends string,
   TProgramAddress extends Address = typeof PROTECTED_PAY_PROGRAM_ADDRESS,
 >(
   input: ClaimPaymentInput<
     TAccountClaimant,
+    TAccountPayer,
+    TAccountSessionToken,
     TAccountPayment,
     TAccountClaimantDeposit
   >,
@@ -123,6 +140,8 @@ export function getClaimPaymentInstruction<
 ): ClaimPaymentInstruction<
   TProgramAddress,
   TAccountClaimant,
+  TAccountPayer,
+  TAccountSessionToken,
   TAccountPayment,
   TAccountClaimantDeposit
 > {
@@ -133,6 +152,8 @@ export function getClaimPaymentInstruction<
   // Original accounts.
   const originalAccounts = {
     claimant: { value: input.claimant ?? null, isWritable: false },
+    payer: { value: input.payer ?? null, isWritable: true },
+    sessionToken: { value: input.sessionToken ?? null, isWritable: false },
     payment: { value: input.payment ?? null, isWritable: true },
     claimantDeposit: { value: input.claimantDeposit ?? null, isWritable: true },
   };
@@ -145,6 +166,8 @@ export function getClaimPaymentInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("claimant", accounts.claimant),
+      getAccountMeta("payer", accounts.payer),
+      getAccountMeta("sessionToken", accounts.sessionToken),
       getAccountMeta("payment", accounts.payment),
       getAccountMeta("claimantDeposit", accounts.claimantDeposit),
     ],
@@ -153,6 +176,8 @@ export function getClaimPaymentInstruction<
   } as ClaimPaymentInstruction<
     TProgramAddress,
     TAccountClaimant,
+    TAccountPayer,
+    TAccountSessionToken,
     TAccountPayment,
     TAccountClaimantDeposit
   >);
@@ -165,8 +190,10 @@ export type ParsedClaimPaymentInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     claimant: TAccountMetas[0];
-    payment: TAccountMetas[1];
-    claimantDeposit: TAccountMetas[2];
+    payer: TAccountMetas[1];
+    sessionToken?: TAccountMetas[2] | undefined;
+    payment: TAccountMetas[3];
+    claimantDeposit: TAccountMetas[4];
   };
   data: ClaimPaymentInstructionData;
 };
@@ -179,12 +206,12 @@ export function parseClaimPaymentInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedClaimPaymentInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 3) {
+  if (instruction.accounts.length < 5) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 3,
+        expectedAccountMetas: 5,
       },
     );
   }
@@ -194,10 +221,18 @@ export function parseClaimPaymentInstruction<
     accountIndex += 1;
     return accountMeta;
   };
+  const getNextOptionalAccount = () => {
+    const accountMeta = getNextAccount();
+    return accountMeta.address === PROTECTED_PAY_PROGRAM_ADDRESS
+      ? undefined
+      : accountMeta;
+  };
   return {
     programAddress: instruction.programAddress,
     accounts: {
       claimant: getNextAccount(),
+      payer: getNextAccount(),
+      sessionToken: getNextOptionalAccount(),
       payment: getNextAccount(),
       claimantDeposit: getNextAccount(),
     },

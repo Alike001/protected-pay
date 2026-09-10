@@ -180,7 +180,7 @@ if (
 
 const commitInstruction = getCommitAndUndelegateDepositInstruction({
   payer: signerClient.payer,
-  user: signerClient.identity,
+  user: AUTHORITY,
   deposit: addresses.deposit,
 });
 const instructions = [

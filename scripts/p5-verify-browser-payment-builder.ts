@@ -12,11 +12,19 @@ import {
   type Instruction,
 } from "@solana/kit";
 import { getSchedulePaymentInstructionDataDecoder } from "../clients/ts/src/generated/instructions/schedulePayment.ts";
+import type { PrivateClient } from "../src/hooks/usePrivateBalance.ts";
 import { buildBalanceMutationInstructions, buildBalanceReturnInstructions, buildFirstFundingInstructions, buildProtectedPaymentInstructions, buildRecipientOnboardingInstructions } from "../src/lib/paymentWorkflow.ts";
 
 const SENDER = address("6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn");
 const RECIPIENT = address("Hfo7LD2FQk6o1uTiVMXvcfvuw9NT1J1qdQSZP9aG3qvQ");
 const signer = createNoopSigner(SENDER);
+const sessionSigner = createNoopSigner(address("8ES7c1cKQDBQJHpUV94Jc9UuG8wmxHArWGLugyZQqEkQ"));
+const sessionToken = address("3GfxhFRBdY5T4vDk6k8PrvXeJpRiwQgjKdRvdQcYT7tH");
+const privateClient = {
+  authority: SENDER,
+  identity: sessionSigner,
+  sessionToken,
+} as unknown as PrivateClient;
 const blockhash = {
   blockhash: "11111111111111111111111111111111" as Blockhash,
   lastValidBlockHeight: 1n,
@@ -37,15 +45,15 @@ const plan = await buildProtectedPaymentInstructions(signer, SENDER, {
   amount: 1_000_000n,
   memo: "browser builder verification",
   recipient: RECIPIENT,
-});
+}, false, undefined, privateClient);
 const firstRecipientPlan = await buildProtectedPaymentInstructions(signer, SENDER, {
   amount: 1_000_000n,
   memo: "first recipient browser builder verification",
   recipient: RECIPIENT,
-}, true);
+}, true, undefined, privateClient);
 const recipientOnboarding = await buildRecipientOnboardingInstructions(createNoopSigner(RECIPIENT), RECIPIENT);
 const firstFunding = await buildFirstFundingInstructions(signer, SENDER, 2_000_000n);
-const balanceReturn = await buildBalanceReturnInstructions(signer, SENDER);
+const balanceReturn = await buildBalanceReturnInstructions(privateClient, SENDER);
 const balanceTopUp = await buildBalanceMutationInstructions(signer, SENDER, 1_000_000n, "deposit");
 const balanceWithdrawal = await buildBalanceMutationInstructions(signer, SENDER, 1_000_000n, "withdraw");
 
@@ -67,7 +75,16 @@ const balanceReturnBytes = transactionBytes(balanceReturn.instructions);
 const balanceTopUpBytes = transactionBytes(balanceTopUp.instructions);
 const balanceWithdrawalBytes = transactionBytes(balanceWithdrawal.instructions);
 if ([publicBytes, privateBytes, firstRecipientPublicBytes, recipientOnboardingBytes, firstFundingBytes, balanceReturnBytes, balanceTopUpBytes, balanceWithdrawalBytes].some((bytes) => bytes > 1_232)) throw new Error("Browser transaction exceeds Solana's packet limit");
-if (balanceReturnBytes !== 320 || balanceTopUpBytes !== 737 || balanceWithdrawalBytes !== 737) throw new Error("Balance-management packaging changed from the reviewed transaction shapes");
+if (balanceReturnBytes !== 449 || balanceTopUpBytes !== 737 || balanceWithdrawalBytes !== 737) throw new Error("Balance-management packaging changed from the reviewed transaction shapes");
+
+const openAccounts = plan.privateInstructions[1].accounts ?? [];
+const scheduleAccounts = plan.privateInstructions[2].accounts ?? [];
+if (openAccounts[0]?.address !== SENDER || openAccounts[1]?.address !== sessionSigner.address || openAccounts[2]?.address !== sessionToken) {
+  throw new Error("Private open is not bound to the authority, session signer, and Session Token");
+}
+if (scheduleAccounts[1]?.address !== sessionSigner.address || scheduleAccounts[2]?.address !== SENDER || scheduleAccounts[3]?.address !== sessionToken) {
+  throw new Error("Crank scheduling is not bound to the same authority and Session Token");
+}
 
 const schedule = getSchedulePaymentInstructionDataDecoder().decode(plan.privateInstructions[2].data!);
 if (schedule.executionIntervalMillis !== 60_000n || schedule.iterations !== 6n) {

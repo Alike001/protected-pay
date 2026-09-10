@@ -48,7 +48,13 @@ export function usePrivatePayment(privateClient: PrivateClient | null, walletAdd
   }, [paymentReference, privateClient, walletAddress]);
 
   useEffect(() => {
-    if (!privateClient) return;
+    if (!privateClient) {
+      setPayment(null);
+      setPaymentAddress(null);
+      setStatus("idle");
+      setMessage(null);
+      return;
+    }
     void refresh();
     const timer = window.setInterval(() => void refresh(), 8_000);
     return () => window.clearInterval(timer);
@@ -56,14 +62,18 @@ export function usePrivatePayment(privateClient: PrivateClient | null, walletAdd
 
   const acknowledge = useCallback(async () => {
     if (!privateClient || !walletAddress || !paymentAddress || !payment) throw new Error("Load the payment before acknowledging.");
-    const transactionSigner = privateClient.identity;
     if (payment.recipient !== walletAddress) throw new Error("Only the intended recipient can acknowledge this payment.");
     setStatus("acting");
     setMessage(null);
     try {
       await sendPrivateTransaction(privateClient, [
         getSetComputeUnitLimitInstruction({ units: 200_000 }),
-        getAcknowledgePaymentInstruction({ recipient: transactionSigner, payment: paymentAddress }),
+        getAcknowledgePaymentInstruction({
+          recipient: address(walletAddress),
+          payer: privateClient.identity,
+          sessionToken: privateClient.sessionToken,
+          payment: paymentAddress,
+        }),
       ]);
       await refresh();
     } catch (error) {
@@ -75,14 +85,19 @@ export function usePrivatePayment(privateClient: PrivateClient | null, walletAdd
 
   const claim = useCallback(async () => {
     if (!privateClient || !walletAddress || !paymentAddress || !payment) throw new Error("Load the payment before claiming.");
-    const transactionSigner = privateClient.identity;
     const [deposit] = await findDepositPda({ user: address(walletAddress), tokenMint: address(USDC_MINT) });
     setStatus("acting");
     setMessage(null);
     try {
       await sendPrivateTransaction(privateClient, [
         getSetComputeUnitLimitInstruction({ units: 200_000 }),
-        getClaimPaymentInstruction({ claimant: transactionSigner, payment: paymentAddress, claimantDeposit: deposit }),
+        getClaimPaymentInstruction({
+          claimant: address(walletAddress),
+          payer: privateClient.identity,
+          sessionToken: privateClient.sessionToken,
+          payment: paymentAddress,
+          claimantDeposit: deposit,
+        }),
       ]);
       await refresh();
     } catch (error) {

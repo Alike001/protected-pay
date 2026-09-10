@@ -219,7 +219,8 @@ const proposedAdvance = [
 const proposedClaim = [
   getSetComputeUnitLimitInstruction({ units: 60_000 }),
   getClaimPaymentInstruction({
-    claimant: noopSigner,
+    claimant: AUTHORITY,
+    payer: noopSigner,
     payment: addresses.payment,
     claimantDeposit: addresses.deposit,
   }),
@@ -426,7 +427,8 @@ if (
 const claimInstructions = [
   getSetComputeUnitLimitInstruction({ units: 60_000 }),
   getClaimPaymentInstruction({
-    claimant: authentication.signerClient.identity,
+    claimant: AUTHORITY,
+    payer: authentication.signerClient.identity,
     payment: addresses.payment,
     claimantDeposit: addresses.deposit,
   }),

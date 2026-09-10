@@ -56,6 +56,8 @@ export type SchedulePaymentInstruction<
   TAccountMagicProgram extends string | AccountMeta<string> =
     "Magic11111111111111111111111111111111111111",
   TAccountPayer extends string | AccountMeta<string> = string,
+  TAccountSender extends string | AccountMeta<string> = string,
+  TAccountSessionToken extends string | AccountMeta<string> = string,
   TAccountPayment extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
     "w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk",
@@ -71,6 +73,12 @@ export type SchedulePaymentInstruction<
         ? WritableSignerAccount<TAccountPayer> &
             AccountSignerMeta<TAccountPayer>
         : TAccountPayer,
+      TAccountSender extends string
+        ? ReadonlyAccount<TAccountSender>
+        : TAccountSender,
+      TAccountSessionToken extends string
+        ? ReadonlyAccount<TAccountSessionToken>
+        : TAccountSessionToken,
       TAccountPayment extends string
         ? WritableAccount<TAccountPayment>
         : TAccountPayment,
@@ -132,11 +140,15 @@ export function getSchedulePaymentInstructionDataCodec(): FixedSizeCodec<
 export type SchedulePaymentAsyncInput<
   TAccountMagicProgram extends string = string,
   TAccountPayer extends string = string,
+  TAccountSender extends string = string,
+  TAccountSessionToken extends string = string,
   TAccountPayment extends string = string,
   TAccountProgram extends string = string,
 > = {
   magicProgram?: Address<TAccountMagicProgram>;
   payer: TransactionSigner<TAccountPayer>;
+  sender: Address<TAccountSender>;
+  sessionToken?: Address<TAccountSessionToken>;
   payment?: Address<TAccountPayment>;
   program?: Address<TAccountProgram>;
   paymentId: SchedulePaymentInstructionDataArgs["paymentId"];
@@ -148,6 +160,8 @@ export type SchedulePaymentAsyncInput<
 export async function getSchedulePaymentInstructionAsync<
   TAccountMagicProgram extends string,
   TAccountPayer extends string,
+  TAccountSender extends string,
+  TAccountSessionToken extends string,
   TAccountPayment extends string,
   TAccountProgram extends string,
   TProgramAddress extends Address = typeof PROTECTED_PAY_PROGRAM_ADDRESS,
@@ -155,6 +169,8 @@ export async function getSchedulePaymentInstructionAsync<
   input: SchedulePaymentAsyncInput<
     TAccountMagicProgram,
     TAccountPayer,
+    TAccountSender,
+    TAccountSessionToken,
     TAccountPayment,
     TAccountProgram
   >,
@@ -164,6 +180,8 @@ export async function getSchedulePaymentInstructionAsync<
     TProgramAddress,
     TAccountMagicProgram,
     TAccountPayer,
+    TAccountSender,
+    TAccountSessionToken,
     TAccountPayment,
     TAccountProgram
   >
@@ -176,6 +194,8 @@ export async function getSchedulePaymentInstructionAsync<
   const originalAccounts = {
     magicProgram: { value: input.magicProgram ?? null, isWritable: false },
     payer: { value: input.payer ?? null, isWritable: true },
+    sender: { value: input.sender ?? null, isWritable: false },
+    sessionToken: { value: input.sessionToken ?? null, isWritable: false },
     payment: { value: input.payment ?? null, isWritable: true },
     program: { value: input.program ?? null, isWritable: false },
   };
@@ -213,6 +233,8 @@ export async function getSchedulePaymentInstructionAsync<
     accounts: [
       getAccountMeta("magicProgram", accounts.magicProgram),
       getAccountMeta("payer", accounts.payer),
+      getAccountMeta("sender", accounts.sender),
+      getAccountMeta("sessionToken", accounts.sessionToken),
       getAccountMeta("payment", accounts.payment),
       getAccountMeta("program", accounts.program),
     ],
@@ -224,6 +246,8 @@ export async function getSchedulePaymentInstructionAsync<
     TProgramAddress,
     TAccountMagicProgram,
     TAccountPayer,
+    TAccountSender,
+    TAccountSessionToken,
     TAccountPayment,
     TAccountProgram
   >);
@@ -232,11 +256,15 @@ export async function getSchedulePaymentInstructionAsync<
 export type SchedulePaymentInput<
   TAccountMagicProgram extends string = string,
   TAccountPayer extends string = string,
+  TAccountSender extends string = string,
+  TAccountSessionToken extends string = string,
   TAccountPayment extends string = string,
   TAccountProgram extends string = string,
 > = {
   magicProgram?: Address<TAccountMagicProgram>;
   payer: TransactionSigner<TAccountPayer>;
+  sender: Address<TAccountSender>;
+  sessionToken?: Address<TAccountSessionToken>;
   payment: Address<TAccountPayment>;
   program?: Address<TAccountProgram>;
   paymentId: SchedulePaymentInstructionDataArgs["paymentId"];
@@ -248,6 +276,8 @@ export type SchedulePaymentInput<
 export function getSchedulePaymentInstruction<
   TAccountMagicProgram extends string,
   TAccountPayer extends string,
+  TAccountSender extends string,
+  TAccountSessionToken extends string,
   TAccountPayment extends string,
   TAccountProgram extends string,
   TProgramAddress extends Address = typeof PROTECTED_PAY_PROGRAM_ADDRESS,
@@ -255,6 +285,8 @@ export function getSchedulePaymentInstruction<
   input: SchedulePaymentInput<
     TAccountMagicProgram,
     TAccountPayer,
+    TAccountSender,
+    TAccountSessionToken,
     TAccountPayment,
     TAccountProgram
   >,
@@ -263,6 +295,8 @@ export function getSchedulePaymentInstruction<
   TProgramAddress,
   TAccountMagicProgram,
   TAccountPayer,
+  TAccountSender,
+  TAccountSessionToken,
   TAccountPayment,
   TAccountProgram
 > {
@@ -274,6 +308,8 @@ export function getSchedulePaymentInstruction<
   const originalAccounts = {
     magicProgram: { value: input.magicProgram ?? null, isWritable: false },
     payer: { value: input.payer ?? null, isWritable: true },
+    sender: { value: input.sender ?? null, isWritable: false },
+    sessionToken: { value: input.sessionToken ?? null, isWritable: false },
     payment: { value: input.payment ?? null, isWritable: true },
     program: { value: input.program ?? null, isWritable: false },
   };
@@ -300,6 +336,8 @@ export function getSchedulePaymentInstruction<
     accounts: [
       getAccountMeta("magicProgram", accounts.magicProgram),
       getAccountMeta("payer", accounts.payer),
+      getAccountMeta("sender", accounts.sender),
+      getAccountMeta("sessionToken", accounts.sessionToken),
       getAccountMeta("payment", accounts.payment),
       getAccountMeta("program", accounts.program),
     ],
@@ -311,6 +349,8 @@ export function getSchedulePaymentInstruction<
     TProgramAddress,
     TAccountMagicProgram,
     TAccountPayer,
+    TAccountSender,
+    TAccountSessionToken,
     TAccountPayment,
     TAccountProgram
   >);
@@ -324,8 +364,10 @@ export type ParsedSchedulePaymentInstruction<
   accounts: {
     magicProgram: TAccountMetas[0];
     payer: TAccountMetas[1];
-    payment: TAccountMetas[2];
-    program: TAccountMetas[3];
+    sender: TAccountMetas[2];
+    sessionToken?: TAccountMetas[3] | undefined;
+    payment: TAccountMetas[4];
+    program: TAccountMetas[5];
   };
   data: SchedulePaymentInstructionData;
 };
@@ -338,12 +380,12 @@ export function parseSchedulePaymentInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedSchedulePaymentInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 4) {
+  if (instruction.accounts.length < 6) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 4,
+        expectedAccountMetas: 6,
       },
     );
   }
@@ -353,11 +395,19 @@ export function parseSchedulePaymentInstruction<
     accountIndex += 1;
     return accountMeta;
   };
+  const getNextOptionalAccount = () => {
+    const accountMeta = getNextAccount();
+    return accountMeta.address === PROTECTED_PAY_PROGRAM_ADDRESS
+      ? undefined
+      : accountMeta;
+  };
   return {
     programAddress: instruction.programAddress,
     accounts: {
       magicProgram: getNextAccount(),
       payer: getNextAccount(),
+      sender: getNextAccount(),
+      sessionToken: getNextOptionalAccount(),
       payment: getNextAccount(),
       program: getNextAccount(),
     },

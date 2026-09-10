@@ -489,7 +489,8 @@ const instructions = [
     ? []
     : [getAdvancePaymentInstruction({ payment: addresses.payment })]),
   getClaimPaymentInstruction({
-    claimant: authentication.signerClient.identity,
+    claimant: AUTHORITY,
+    payer: authentication.signerClient.identity,
     payment: addresses.payment,
     claimantDeposit: addresses.deposit,
   }),

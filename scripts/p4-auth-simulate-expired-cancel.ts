@@ -346,12 +346,13 @@ if (
 }
 
 const cancelInstruction = getCancelPaymentInstruction({
-  sender: authentication.signerClient.identity,
+  sender: AUTHORITY,
+  payer: authentication.signerClient.identity,
   payment,
   senderDeposit: sender.deposit,
 });
 if (
-  cancelInstruction.accounts.length !== 3 ||
+  cancelInstruction.accounts.length !== 5 ||
   cancelInstruction.accounts.some((account) => account.address === RECIPIENT) ||
   cancelInstruction.accounts.some((account) => account.address === recipientDeposit)
 ) {

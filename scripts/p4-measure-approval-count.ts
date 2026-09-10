@@ -287,7 +287,8 @@ const taskId = 1_788_999_999_001n;
 const privateInstructions = [
   getSetComputeUnitLimitInstruction({ units: PRIVATE_COMPUTE_LIMIT }),
   await getOpenPaymentInstructionAsync({
-    sender: signer,
+    sender: AUTHORITY,
+    payer: signer,
     config: sender.config,
     payment,
     senderDeposit: sender.deposit,
@@ -298,6 +299,7 @@ const privateInstructions = [
   await getSchedulePaymentInstructionAsync({
     magicProgram: MAGIC_PROGRAM,
     payer: signer,
+    sender: AUTHORITY,
     payment,
     program: PROGRAM_ID,
     paymentId: PAYMENT_ID,
