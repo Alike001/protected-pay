@@ -69,6 +69,12 @@ h1, h2, p { margin-top: 0; }
 .balance-unit { display: block; margin-top: 8px; color: var(--muted); font-size: 13px; }
 .secondary-action, .danger-action { min-height: 44px; display: inline-flex; justify-content: center; align-items: center; gap: 8px; margin-top: 34px; padding: 0 15px; border: 1px solid var(--border); border-radius: 10px; background: #fff; font-weight: 700; font-size: 13px; cursor: pointer; }
 .secondary-action:disabled { opacity: .5; cursor: not-allowed; }
+.balance-actions { display: flex; gap: 8px; margin-top: 34px; }
+.balance-actions .secondary-action { flex: 1; margin-top: 0; padding-inline: 11px; }
+.balance-recovery { width: 100%; min-height: 38px; display: flex; justify-content: center; align-items: center; gap: 7px; margin-top: 10px; border: 1px solid #d9d5ff; border-radius: 9px; color: var(--violet); background: var(--violet-soft); font-size: 11px; font-weight: 750; cursor: pointer; }
+.balance-actions { display: flex; gap: 8px; margin-top: 34px; }
+.balance-actions .secondary-action { flex: 1; margin-top: 0; padding-inline: 10px; }
+.balance-recovery { width: 100%; min-height: 38px; display: flex; justify-content: center; align-items: center; gap: 7px; margin-top: 10px; border: 1px solid #d9d5ff; border-radius: 9px; color: var(--violet); background: var(--violet-soft); font-size: 11px; font-weight: 750; cursor: pointer; }
 .inline-message { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .composer-panel { display: grid; gap: 14px; }
 .composer-panel label { display: grid; gap: 7px; color: var(--ink); font-size: 12px; font-weight: 700; }
@@ -144,6 +150,8 @@ input:disabled, select:disabled { background: var(--surface); }
 .muted { margin: 14px 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
 .review-values, .proof-list { margin: 18px 0; border-top: 1px solid var(--border); }
 .review-values div, .proof-list div { display: flex; justify-content: space-between; gap: 18px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.balance-summary { margin: 12px 0 15px; }
+.balance-summary div { padding: 7px 0; }
 dt { color: var(--muted); font-size: 12px; }
 dd { margin: 0; text-align: right; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
 .approval-steps { display: grid; gap: 10px; margin: 18px 0; padding: 0; list-style: none; }
@@ -158,6 +166,15 @@ dd { margin: 0; text-align: right; font-size: 12px; font-weight: 700; overflow-w
 .workflow-success { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 13px; border-radius: 10px; color: #087a4b; background: #dff8ed; }
 .workflow-success div { display: grid; gap: 2px; }
 .workflow-success small { color: #398164; font-size: 10px; }
+.workflow-progress, .recovery-note { display: flex; align-items: flex-start; gap: 9px; margin-top: 12px; padding: 12px; border-radius: 10px; font-size: 11px; line-height: 1.5; }
+.workflow-progress { align-items: center; color: #087a4b; background: #dff8ed; }
+.recovery-note { color: #575087; background: var(--violet-soft); }
+.discard-operation { width: 100%; margin-top: 9px; padding: 8px; border: 0; color: var(--muted); background: transparent; font-size: 11px; font-weight: 650; cursor: pointer; }
+.workflow-progress, .recovery-note { display: flex; align-items: flex-start; gap: 9px; margin-top: 12px; padding: 11px 12px; border-radius: 9px; font-size: 11px; line-height: 1.45; }
+.workflow-progress { align-items: center; color: #087a4b; background: #dff8ed; }
+.recovery-note { color: #575087; background: var(--surface); }
+.recovery-note svg { color: var(--violet); flex: 0 0 auto; }
+.discard-operation { width: 100%; margin-top: 11px; padding: 8px; border: 0; color: var(--muted); background: transparent; font-size: 11px; font-weight: 650; cursor: pointer; }
 .danger-icon { display: grid; place-content: center; width: 44px; height: 44px; margin: 0 auto 13px; color: var(--coral); background: #ffeaeb; border-radius: 12px; }
 .review-modal.compact h2 { margin-bottom: 7px; }
 .review-modal.compact p { color: var(--muted); font-size: 13px; line-height: 1.55; }

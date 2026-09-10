@@ -10,21 +10,27 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
   type Instruction,
+  type TransactionSigner,
 } from "@solana/kit";
-import type { PrivateClient } from "../hooks/usePrivateBalance";
-import type { PreparedTransaction } from "./sendPublicTransaction";
+import type { AppClient } from "../client";
 
-const MAX_CONFIRMATION_POLLS = 40;
+const MAX_CONFIRMATION_POLLS = 60;
 
-export async function sendPrivateTransaction(
-  privateClient: PrivateClient,
+export type PreparedTransaction = {
+  lastValidBlockHeight: bigint;
+  signature: string;
+};
+
+export async function sendPublicTransaction(
+  client: AppClient,
+  transactionSigner: TransactionSigner,
   instructions: readonly Instruction[],
   onPrepared?: (prepared: PreparedTransaction) => void,
 ) {
-  const { value: latestBlockhash } = await privateClient.rpc.getLatestBlockhash({ commitment: "confirmed" }).send();
+  const { value: latestBlockhash } = await client.rpc.getLatestBlockhash({ commitment: "confirmed" }).send();
   const message = pipe(
     createTransactionMessage({ version: 0 }),
-    (current) => setTransactionMessageFeePayerSigner(privateClient.payer, current),
+    (current) => setTransactionMessageFeePayerSigner(transactionSigner, current),
     (current) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, current),
     (current) => appendTransactionMessageInstructions(instructions, current),
   );
@@ -34,7 +40,7 @@ export async function sendPrivateTransaction(
   const wire = getBase64EncodedWireTransaction(signedTransaction);
   const preparedSignature = getSignatureFromTransaction(signedTransaction);
 
-  const simulation = await privateClient.rpc.simulateTransaction(wire, {
+  const simulation = await client.rpc.simulateTransaction(wire, {
     commitment: "confirmed",
     encoding: "base64",
     innerInstructions: true,
@@ -42,26 +48,26 @@ export async function sendPrivateTransaction(
     sigVerify: true,
   }).send();
   if (simulation.value.err !== null) {
-    throw new Error(`Private transaction simulation failed: ${JSON.stringify(simulation.value.err)}`);
+    throw new Error(`Solana transaction simulation failed: ${JSON.stringify(simulation.value.err)}`);
   }
 
   onPrepared?.({ lastValidBlockHeight: latestBlockhash.lastValidBlockHeight, signature: preparedSignature });
-  const submittedSignature = await privateClient.rpc.sendTransaction(wire, {
+  const submittedSignature = await client.rpc.sendTransaction(wire, {
     encoding: "base64",
     maxRetries: 5n,
     preflightCommitment: "confirmed",
     skipPreflight: false,
   }).send();
-  if (submittedSignature !== preparedSignature) throw new Error("Private runtime returned an unexpected transaction signature.");
+  if (submittedSignature !== preparedSignature) throw new Error("Solana returned an unexpected transaction signature.");
 
   for (let poll = 0; poll < MAX_CONFIRMATION_POLLS; poll += 1) {
-    const response = await privateClient.rpc.getSignatureStatuses([preparedSignature], { searchTransactionHistory: true }).send();
+    const response = await client.rpc.getSignatureStatuses([preparedSignature], { searchTransactionHistory: true }).send();
     const status = response.value[0];
-    if (status?.err) throw new Error(`Private transaction failed after submission: ${JSON.stringify(status.err)}`);
+    if (status?.err) throw new Error(`Solana transaction failed after submission: ${JSON.stringify(status.err)}`);
     if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") return preparedSignature;
-    const blockHeight = await privateClient.rpc.getBlockHeight({ commitment: "confirmed" }).send();
-    if (blockHeight > latestBlockhash.lastValidBlockHeight) throw new Error("Private transaction expired before confirmation.");
+    const blockHeight = await client.rpc.getBlockHeight({ commitment: "confirmed" }).send();
+    if (blockHeight > latestBlockhash.lastValidBlockHeight) throw new Error("Solana transaction expired before confirmation.");
     await new Promise((resolve) => window.setTimeout(resolve, 500));
   }
-  throw new Error("Private transaction confirmation timed out. Its signature has been saved for safe reconciliation.");
+  throw new Error("Solana transaction confirmation timed out. Its signature has been saved for safe reconciliation.");
 }

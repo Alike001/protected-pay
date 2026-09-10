@@ -95,7 +95,7 @@ The protected-time rail is the recurring product shape. It appears as a circular
 - `AppShell`: sidebar/compact mobile header and main content.
 - `BrandMark`: code-native shield outline.
 - `WalletControl`: connected/disconnected, full address available to inspect.
-- `BalancePanel`: available test USDC and withdrawal.
+- `BalancePanel`: available test USDC, first/subsequent funding, withdrawal, and interrupted-operation recovery.
 - `PaymentComposer`: validated recipient, amount, private note, review transition.
 - `ApprovalSteps`: public preparation, optional session signature, private open.
 - `PaymentCountdown`: authoritative deadline plus local display countdown.
@@ -107,6 +107,8 @@ The protected-time rail is the recurring product shape. It appears as a circular
 - `Disclosure`: test-only and exact privacy limits.
 
 The browser implementation encrypts note text with AES-GCM and carries the ciphertext and key in the recipient URL fragment, which browsers do not send to the host. The authenticated Payment stores only the note hash and the recipient verifies decrypted text against it. This keeps note text off public and Private ER state, but possession of the complete recipient link is sufficient to decrypt it; copy must not describe the note as wallet-gated.
+
+Balance top-ups and withdrawals use a separate two-stage dialog. It must show amount, Circle test USDC, Solana Devnet, wallet/fee payer, source or destination, and the public aggregate-balance disclosure before signing. A saved signature checkpoint may be resumed but never discarded after a transaction has been prepared; only a wholly unsigned operation may be discarded.
 
 ## Required states
 

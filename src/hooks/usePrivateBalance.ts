@@ -17,6 +17,7 @@ import type { AppClient } from "../client";
 
 type BalanceState = {
   available: bigint;
+  exists: boolean;
   locked: bigint;
   paused: boolean;
 };
@@ -46,7 +47,7 @@ export function usePrivateBalance(client: AppClient, walletAddress: string | nul
     const [deposit] = await findDepositPda({ user: address(owner), tokenMint: address(USDC_MINT) });
     const response = await rpc.getAccountInfo(deposit, { commitment: "confirmed", encoding: "base64" }).send();
     if (!response.value) {
-      setBalance({ available: 0n, locked: 0n, paused: false });
+      setBalance({ available: 0n, exists: false, locked: 0n, paused: false });
       setMessage("No protected balance yet. Fund the vault before sending.");
       return;
     }
@@ -55,7 +56,7 @@ export function usePrivateBalance(client: AppClient, walletAddress: string | nul
     if (decoded.user !== owner || decoded.tokenMint !== USDC_MINT) {
       throw new Error("Protected balance account does not match this wallet.");
     }
-    setBalance({ available: decoded.available, locked: decoded.locked, paused: decoded.automationPaused });
+    setBalance({ available: decoded.available, exists: true, locked: decoded.locked, paused: decoded.automationPaused });
     setMessage(null);
   }, []);
 

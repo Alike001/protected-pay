@@ -1,5 +1,6 @@
 import {
   ArrowDownToLine,
+  ArrowUpFromLine,
   ArrowUpRight,
   Check,
   Clock3,
@@ -18,9 +19,11 @@ import { address } from "@solana/kit";
 import { PaymentStatus } from "../../../clients/ts/src/generated/types/paymentStatus";
 import { usePrivateBalance } from "../../hooks/usePrivateBalance";
 import { usePrivatePayment } from "../../hooks/usePrivatePayment";
+import { createBalanceOperationCheckpoint, runBalanceOperation, validateBalanceOperationCheckpoint, type BalanceOperationCheckpoint, type BalanceOperationKind, type BalanceOperationStage } from "../../lib/balanceOperation";
 import { formatUsdc, parseUsdc, shortAddress } from "../../lib/format";
 import { cancelProtectedPayment, fundFirstProtectedBalance, openProtectedPayment, type PaymentStage, type ProtectedPaymentReceipt } from "../../lib/paymentWorkflow";
 import type { AppClient } from "../../client";
+import { BalanceOperationDialog } from "./BalanceOperationDialog";
 
 const PREVIEW_RECIPIENT = "Hfo7LD2FQk6o1uTiVMXvcfvuw9NT1J1qdQSZP9aG3qvQ";
 
@@ -113,6 +116,13 @@ export function SenderDashboard({ preview, onShowProof }: Props) {
   const [fundingAmount, setFundingAmount] = useState("1");
   const [funding, setFunding] = useState(false);
   const [fundingError, setFundingError] = useState<string | null>(null);
+  const [balanceDialogOpen, setBalanceDialogOpen] = useState(false);
+  const [balanceKind, setBalanceKind] = useState<BalanceOperationKind>("deposit");
+  const [balanceAmount, setBalanceAmount] = useState("1");
+  const [balanceCheckpoint, setBalanceCheckpoint] = useState<BalanceOperationCheckpoint | null>(null);
+  const [balanceStage, setBalanceStage] = useState<BalanceOperationStage>("reconciling");
+  const [balanceWorking, setBalanceWorking] = useState(false);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
   const [savedPayment, setSavedPayment] = useState<SavedPayment | null>(null);
   const livePayment = usePrivatePayment(privateBalance.privateClient, walletAddress, savedPayment?.paymentReference ?? null);
 
@@ -127,6 +137,23 @@ export function SenderDashboard({ preview, onShowProof }: Props) {
       setSavedPayment(parsed?.sender === walletAddress ? parsed : null);
     } catch {
       setSavedPayment(null);
+    }
+  }, [preview, walletAddress]);
+
+  useEffect(() => {
+    if (!walletAddress || preview) {
+      setBalanceCheckpoint(null);
+      return;
+    }
+    const storageKey = `protected-pay:balance-operation:${walletAddress}`;
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      const checkpoint = raw ? validateBalanceOperationCheckpoint(JSON.parse(raw), walletAddress) : null;
+      setBalanceCheckpoint(checkpoint);
+      if (checkpoint) setBalanceKind(checkpoint.kind);
+    } catch {
+      sessionStorage.removeItem(storageKey);
+      setBalanceCheckpoint(null);
     }
   }, [preview, walletAddress]);
 
@@ -233,6 +260,55 @@ export function SenderDashboard({ preview, onShowProof }: Props) {
     }
   }
 
+  function persistBalanceCheckpoint(checkpoint: BalanceOperationCheckpoint | null) {
+    setBalanceCheckpoint(checkpoint);
+    if (!walletAddress) return;
+    const storageKey = `protected-pay:balance-operation:${walletAddress}`;
+    try {
+      if (checkpoint) sessionStorage.setItem(storageKey, JSON.stringify(checkpoint));
+      else sessionStorage.removeItem(storageKey);
+    } catch {
+      if (checkpoint) throw new Error("This browser cannot save the recovery checkpoint, so Protected Pay will not broadcast the balance transaction.");
+    }
+  }
+
+  function openBalanceOperation(kind: BalanceOperationKind) {
+    setBalanceKind(balanceCheckpoint?.kind ?? kind);
+    setBalanceError(null);
+    setBalanceStage("reconciling");
+    setBalanceDialogOpen(true);
+  }
+
+  async function executeBalanceOperation() {
+    if (!connected?.signer || !walletAddress || (!balanceCheckpoint && !privateBalance.balance)) return;
+    setBalanceError(null);
+    let checkpoint = balanceCheckpoint;
+    try {
+      if (!checkpoint) {
+        checkpoint = createBalanceOperationCheckpoint(walletAddress, balanceKind, parseUsdc(balanceAmount), privateBalance.balance!.available);
+        persistBalanceCheckpoint(checkpoint);
+      }
+      setBalanceWorking(true);
+      const privateClient = privateBalance.privateClient ?? await privateBalance.unlock();
+      await runBalanceOperation(client, privateClient, connected.signer, checkpoint, persistBalanceCheckpoint, setBalanceStage);
+      persistBalanceCheckpoint(null);
+      await privateBalance.refresh();
+      setBalanceDialogOpen(false);
+      setBalanceAmount("1");
+    } catch (error) {
+      setBalanceError(error instanceof Error ? error.message : "The protected balance operation could not be reconciled.");
+    } finally {
+      setBalanceWorking(false);
+    }
+  }
+
+  function discardUnsentBalanceOperation() {
+    if (balanceCheckpoint?.returnTransaction || balanceCheckpoint?.mutationTransaction) return;
+    persistBalanceCheckpoint(null);
+    setBalanceError(null);
+    setBalanceDialogOpen(false);
+  }
+
   return (
     <main className="dashboard-main">
       <header className="page-heading">
@@ -256,18 +332,20 @@ export function SenderDashboard({ preview, onShowProof }: Props) {
             <button className="secondary-action" onClick={privateBalance.unlock} disabled={privateBalance.status === "loading"}>
               <LockKeyhole size={16} /> {privateBalance.status === "loading" ? "Unlocking…" : "Unlock private balance"}
             </button>
-          ) : preview ? <button className="secondary-action"><ArrowDownToLine size={16} /> Withdraw</button>
-            : connected && privateBalance.status === "ready" && shownBalance === 0n ? <button className="secondary-action" onClick={() => setFundingOpen(true)}><ArrowDownToLine size={16} /> Set up balance</button>
+          ) : preview ? <button className="secondary-action" onClick={() => openBalanceOperation("withdraw")}><ArrowDownToLine size={16} /> Withdraw</button>
+            : connected && privateBalance.status === "ready" && privateBalance.balance?.exists === false ? <button className="secondary-action" onClick={() => setFundingOpen(true)}><ArrowDownToLine size={16} /> Set up balance</button>
+            : connected && privateBalance.status === "ready" && privateBalance.balance?.exists ? <div className="balance-actions"><button className="secondary-action" onClick={() => openBalanceOperation("deposit")}><ArrowUpFromLine size={16} /> Add funds</button><button className="secondary-action" onClick={() => openBalanceOperation("withdraw")} disabled={shownBalance === 0n}><ArrowDownToLine size={16} /> Withdraw</button></div>
             : null}
+          {balanceCheckpoint && !preview && <button className="balance-recovery" onClick={() => openBalanceOperation(balanceCheckpoint.kind)}><RotateCcw size={15} /> Resume {balanceCheckpoint.kind === "deposit" ? "top-up" : "withdrawal"}</button>}
           {privateBalance.message && !preview && <p className="inline-message">{privateBalance.message}</p>}
         </section>
 
         <section className="panel composer-panel">
           <div className="panel-label"><span>Send protected payment</span><Clock3 size={18} /></div>
-          <label>Recipient wallet<input value={recipient} onChange={(event) => setRecipient(event.target.value)} placeholder="Solana wallet address" disabled={!preview && !connected} /></label>
-          <div className="form-row"><label>Amount<div className="input-suffix"><input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" placeholder="0.00" disabled={!preview && !connected} /><span>USDC</span></div></label><label>Settlement window<select value="60" disabled><option value="60">1 minute after opening</option></select></label></div>
-          <label>Private note <span className="optional">Optional</span><input value={note} maxLength={64} onChange={(event) => setNote(event.target.value)} placeholder="What is this for?" disabled={!preview && !connected} /></label>
-          <button className="primary-action" onClick={() => !validation && setReviewing(true)} disabled={Boolean(validation) || (!preview && !connected)}>Review payment <ArrowUpRight size={16} /></button>
+          <label>Recipient wallet<input value={recipient} onChange={(event) => setRecipient(event.target.value)} placeholder="Solana wallet address" disabled={!preview && (!connected || Boolean(balanceCheckpoint))} /></label>
+          <div className="form-row"><label>Amount<div className="input-suffix"><input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" placeholder="0.00" disabled={!preview && (!connected || Boolean(balanceCheckpoint))} /><span>USDC</span></div></label><label>Settlement window<select value="60" disabled><option value="60">1 minute after opening</option></select></label></div>
+          <label>Private note <span className="optional">Optional</span><input value={note} maxLength={64} onChange={(event) => setNote(event.target.value)} placeholder="What is this for?" disabled={!preview && (!connected || Boolean(balanceCheckpoint))} /></label>
+          <button className="primary-action" onClick={() => !validation && setReviewing(true)} disabled={Boolean(validation) || (!preview && (!connected || Boolean(balanceCheckpoint)))}>Review payment <ArrowUpRight size={16} /></button>
           <small className="privacy-copy"><LockKeyhole size={14} /> Amount, note, and live status stay private while pending.</small>
         </section>
       </div>
@@ -296,6 +374,7 @@ export function SenderDashboard({ preview, onShowProof }: Props) {
       {reviewing && <ReviewDialog recipient={recipient} amount={amount} note={note} onClose={() => setReviewing(false)} onConfirm={confirmPayment} preview={preview} receipt={receipt} stage={workflowStage} workflowError={workflowError} />}
       {undoing && <div className="modal-backdrop" onMouseDown={() => !canceling && setUndoing(false)}><section className="review-modal compact" role="dialog" aria-modal="true" aria-label="Undo payment" onMouseDown={(event) => event.stopPropagation()}><span className="danger-icon"><RotateCcw size={20} /></span><h2>Undo this payment?</h2><p>The {activeAmount} test USDC returns to your protected balance. The recipient will no longer be able to claim it.</p>{cancelError && <p className="workflow-error" role="alert">{cancelError}</p>}<button className="danger-action" onClick={confirmUndo} disabled={preview || !(receipt?.payment ?? livePayment.paymentAddress) || canceling}>{preview ? "Preview only" : canceling ? "Recovering…" : "Undo and recover funds"}</button><button className="secondary-action" onClick={() => setUndoing(false)} disabled={canceling}>Keep payment</button></section></div>}
       {fundingOpen && <div className="modal-backdrop" onMouseDown={() => !funding && setFundingOpen(false)}><section className="review-modal compact" role="dialog" aria-modal="true" aria-label="Set up protected balance" onMouseDown={(event) => event.stopPropagation()}><span className="icon-tile large"><WalletCards size={22} /></span><h2>Set up protected balance</h2><p>Move Circle Devnet USDC into Protected Pay and make the balance private in one transaction.</p><label className="modal-field">Amount<div className="input-suffix"><input value={fundingAmount} onChange={(event) => setFundingAmount(event.target.value)} inputMode="decimal" /><span>USDC</span></div></label>{fundingError && <p className="workflow-error" role="alert">{fundingError}</p>}<button className="primary-action" onClick={confirmFunding} disabled={funding}>{funding ? "Setting up…" : "Approve setup and deposit"}</button><a className="faucet-link" href="https://faucet.circle.com/" target="_blank" rel="noreferrer">Need test USDC? Open Circle Faucet <ArrowUpRight size={14} /></a><button className="secondary-action" onClick={() => setFundingOpen(false)} disabled={funding}>Cancel</button></section></div>}
+      {balanceDialogOpen && <BalanceOperationDialog amount={balanceAmount} checkpoint={balanceCheckpoint} error={balanceError} kind={balanceKind} onAmountChange={setBalanceAmount} onClose={() => setBalanceDialogOpen(false)} onDiscard={discardUnsentBalanceOperation} onSubmit={executeBalanceOperation} preview={preview} stage={balanceStage} wallet={walletAddress ?? "Not connected"} working={balanceWorking} />}
     </main>
   );
 }
