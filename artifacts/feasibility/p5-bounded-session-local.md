@@ -61,8 +61,38 @@ Finalized evidence:
 - Program upgrade executed: false
 - One-time Buffer signer retained: no
 
+## Version-2.2 exact signed upgrade simulation
+
+After separate approval, the guarded client loaded the approved upgrade-authority signer and built the exact upgradeable-loader `Upgrade` transaction against the finalized Buffer. The signed wire transaction was submitted only to `simulateTransaction` with signature verification enabled. The independent broadcast flag was absent.
+
+The simulation replaced the program bytes with the complete reviewed artifact, preserved the ProgramData allocation and authority, zeroed all unused capacity, drained the Buffer, and returned its full 3.4414206 SOL rent to the authority. The simulated authority balance reconciled exactly after the 5,000-lamport fee. A finalized post-check read then proved the live deploy slot, Buffer bytes, and authority balance were unchanged, and the prepared signature was absent from Devnet.
+
+```text
+Cluster: Solana Devnet
+Release: version-2.2
+Instruction: UpgradeableLoaderInstruction::Upgrade
+Program: w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk
+ProgramData: BXX67CiW14MVLku97gfUm4muQKwUc7uDsSrbC9qsYRAj
+Buffer: AZxR3hGpicvWYwSbHUt3a3jhFYawBSBsEdpLuY9pheq6
+Authority, fee payer, and spill destination: 6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn
+Binary length: 677,280 bytes
+Binary and Buffer SHA-256: 4ed1f10108d2a62c7be3f10d8201ac440fcaaef1725952538b540d3c8ba080dd
+ProgramData capacity: 700,672 bytes
+Live deploy slot before and after simulation: 496343964
+Simulated deploy slot: 496386474
+Simulated Buffer drained: true
+Simulated Buffer rent refund: 3.4414206 SOL
+Simulated ProgramData rent top-up: 0 SOL
+Estimated fee: 5,000 lamports
+Compute units: 2,370
+Signature verification: passed
+Simulation error: none
+Transaction broadcast: false
+Prepared signature found on Devnet: false
+Live Buffer still present and byte-identical: true
+```
+
 The remaining explicit gates are:
 
-1. run an exact signed, non-broadcast version-2.2 upgrade simulation against the finalized Buffer;
-2. upgrade only after separate broadcast approval;
-3. create a real browser Session Token and prove session-signed private open/schedule, revocation, and expired/revoked denial.
+1. sign, re-simulate, and broadcast a fresh version-2.2 upgrade transaction only after separate approval;
+2. create a real browser Session Token and prove session-signed private open/schedule, revocation, and expired/revoked denial.
