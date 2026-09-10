@@ -92,7 +92,31 @@ Prepared signature found on Devnet: false
 Live Buffer still present and byte-identical: true
 ```
 
-The remaining explicit gates are:
+## Version-2.2 finalized Devnet upgrade
 
-1. sign, re-simulate, and broadcast a fresh version-2.2 upgrade transaction only after separate approval;
-2. create a real browser Session Token and prove session-signed private open/schedule, revocation, and expired/revoked denial.
+After a separate broadcast approval, the guarded client repeated all finalized account, authority, capacity, and bytecode checks. It signed a fresh transaction, simulated those exact wire bytes with signature verification enabled, and broadcast the same bytes. The upgrade finalized successfully.
+
+An independent finalized RPC audit then reconstructed the deployed bytecode directly from ProgramData. Its SHA-256 matches the reviewed local artifact, all 23,392 unused capacity bytes are zero, the Program account remains executable under the upgradeable loader, the Buffer is closed, and the recorded authority remains present. No browser or private-state transaction was part of this upgrade.
+
+```text
+Cluster: Solana Devnet
+Release: version-2.2
+Finalized signature: 5sf55FjtBCzsXi8VbnjqJfy6gZ2HbyR2Bbc3d7rmit8yT4grnSGwcxKvxhygW26Uisg3RLkSyJki9X3x7dP677Kc
+Finalized slot and deploy slot: 496387711
+Program: w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk
+ProgramData: BXX67CiW14MVLku97gfUm4muQKwUc7uDsSrbC9qsYRAj
+Deployed binary length: 677,280 bytes
+Deployed SHA-256: 4ed1f10108d2a62c7be3f10d8201ac440fcaaef1725952538b540d3c8ba080dd
+ProgramData capacity: 700,672 bytes
+Trailing zero bytes: 23,392
+Closed Buffer: AZxR3hGpicvWYwSbHUt3a3jhFYawBSBsEdpLuY9pheq6
+Buffer rent refunded: 3.4414206 SOL
+ProgramData rent top-up: 0 SOL
+Fee: 5,000 lamports
+Authority balance before: 1.40439008 SOL
+Authority balance after: 4.84580568 SOL
+Signed simulation passed before broadcast: true
+Independent finalized audit: passed
+```
+
+The remaining live gate is to create a real browser Session Token and prove session-signed private open/schedule, explicit revocation, and expired/revoked denial before continuing the complete payment lifecycle.

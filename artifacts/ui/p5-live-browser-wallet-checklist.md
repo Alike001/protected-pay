@@ -1,6 +1,6 @@
 # Phase 5 Live Browser-Wallet Evidence Checklist
 
-Status: paused at the Phase 5.1 program-upgrade gate. Connection, authentication rejection/recovery, exact-wallet funding, and first browser Deposit delegation are recorded below. The next product build uses a public one-hour MagicBlock Session Token plus an in-memory signer so Phantom never has to simulate Private ER state as if it were base-layer Solana. Local and unsigned Devnet verification pass, but the authorization binary is not deployed; do not resume successful-send evidence against the older account layout.
+Status: version-2.2 authorization upgrade finalized on Devnet; ready to resume live browser evidence. Connection, authentication rejection/recovery, exact-wallet funding, and first browser Deposit delegation are recorded below. The deployed product uses a public one-hour MagicBlock Session Token plus an in-memory signer so Phantom never has to simulate Private ER state as if it were base-layer Solana. The next checkpoint is a real Session Token followed by session-signed private open/schedule and explicit revocation/denial evidence.
 
 ## Recorded evidence
 
