@@ -40,6 +40,8 @@ Phase 5 is now in progress. The React/Vite product implements the 30-second send
 
 Withdrawal, subsequent top-ups for an already delegated balance, complete terminal-state reconciliation, and the remaining rejected/delayed wallet states are not yet wired. The interface does not display nonfunctional production controls for those paths.
 
+Unsigned balance-management builders now reproduce the proven two-stage path: a 320-byte private commit/undelegation transaction followed by a 737-byte public top-up-or-withdrawal plus re-delegation transaction. They are deliberately not exposed as product controls until ambiguous confirmation and retry reconciliation can prevent a duplicate custody mutation.
+
 Run the interface with `npm run dev:web`, validate it with `npm run typecheck:web`, and produce the optimized client with `npm run build:web`.
 
 ## Source layout

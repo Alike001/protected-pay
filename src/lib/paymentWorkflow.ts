@@ -11,6 +11,7 @@ import {
 import { getSetComputeUnitLimitInstruction } from "@solana-program/compute-budget";
 import { getCreatePaymentPermissionInstruction } from "../../clients/ts/src/generated/instructions/createPaymentPermission";
 import { getCancelPaymentInstruction } from "../../clients/ts/src/generated/instructions/cancelPayment";
+import { getCommitAndUndelegateDepositInstruction } from "../../clients/ts/src/generated/instructions/commitAndUndelegateDeposit";
 import { getCreateDepositPermissionInstruction } from "../../clients/ts/src/generated/instructions/createDepositPermission";
 import { getDepositUsdcInstructionAsync } from "../../clients/ts/src/generated/instructions/depositUsdc";
 import { getDelegateDepositInstructionAsync } from "../../clients/ts/src/generated/instructions/delegateDeposit";
@@ -21,6 +22,7 @@ import { getOpenPaymentInstructionAsync } from "../../clients/ts/src/generated/i
 import { getPreparePaymentInstructionAsync } from "../../clients/ts/src/generated/instructions/preparePayment";
 import { getSchedulePaymentInstructionAsync } from "../../clients/ts/src/generated/instructions/schedulePayment";
 import { getInitializeDepositInstructionAsync } from "../../clients/ts/src/generated/instructions/initializeDeposit";
+import { getWithdrawUsdcInstructionAsync } from "../../clients/ts/src/generated/instructions/withdrawUsdc";
 import { findDepositPda } from "../../clients/ts/src/generated/pdas/deposit";
 import { findPaymentPda } from "../../clients/ts/src/generated/pdas/payment";
 import { PROGRAM_ID, USDC_MINT } from "./constants";
@@ -37,6 +39,14 @@ const TOKEN_PROGRAM = address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const ASSOCIATED_TOKEN_PROGRAM = address("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 const PAYMENT_INTERVAL_MILLIS = 60_000n;
 const PAYMENT_ITERATIONS = 6n;
+
+async function associatedTokenAddress(owner: Address, mint: Address) {
+  const [tokenAccount] = await getProgramDerivedAddress({
+    programAddress: ASSOCIATED_TOKEN_PROGRAM,
+    seeds: [getAddressEncoder().encode(owner), getAddressEncoder().encode(TOKEN_PROGRAM), getAddressEncoder().encode(mint)],
+  });
+  return tokenAccount;
+}
 
 export type PaymentStage = "preparing" | "authenticating" | "opening" | "confirmed";
 
@@ -279,11 +289,8 @@ export async function buildFirstFundingInstructions(
   const mint = address(USDC_MINT);
   const [deposit] = await findDepositPda({ user, tokenMint: mint });
   const permission = await permissionPda(deposit);
-  const [[userTokenAccount], depositDelegation, permissionDelegation] = await Promise.all([
-    getProgramDerivedAddress({
-      programAddress: ASSOCIATED_TOKEN_PROGRAM,
-      seeds: [getAddressEncoder().encode(user), getAddressEncoder().encode(TOKEN_PROGRAM), getAddressEncoder().encode(mint)],
-    }),
+  const [userTokenAccount, depositDelegation, permissionDelegation] = await Promise.all([
+    associatedTokenAddress(user, mint),
     delegationPdas(deposit, address(PROGRAM_ID)),
     delegationPdas(permission, PERMISSION_PROGRAM),
   ]);
@@ -315,6 +322,54 @@ export async function buildFirstFundingInstructions(
     }),
   ];
   return { deposit, instructions, permission, userTokenAccount } as const;
+}
+
+export async function buildBalanceReturnInstructions(
+  transactionSigner: TransactionSigner,
+  user: Address,
+) {
+  const [deposit] = await findDepositPda({ user, tokenMint: address(USDC_MINT) });
+  return {
+    deposit,
+    instructions: [
+      getSetComputeUnitLimitInstruction({ units: 200_000 }),
+      getCommitAndUndelegateDepositInstruction({ payer: transactionSigner, user: transactionSigner, deposit }),
+    ] as readonly Instruction[],
+  } as const;
+}
+
+export async function buildBalanceMutationInstructions(
+  transactionSigner: TransactionSigner,
+  user: Address,
+  amount: bigint,
+  kind: "deposit" | "withdraw",
+) {
+  if (amount <= 0n) throw new Error("Balance change amount must be greater than zero.");
+  const mint = address(USDC_MINT);
+  const [deposit] = await findDepositPda({ user, tokenMint: mint });
+  const [userTokenAccount, depositDelegation] = await Promise.all([
+    associatedTokenAddress(user, mint),
+    delegationPdas(deposit, address(PROGRAM_ID)),
+  ]);
+  const mutation = kind === "deposit"
+    ? await getDepositUsdcInstructionAsync({ user: transactionSigner, deposit, userTokenAccount, tokenMint: mint, amount })
+    : await getWithdrawUsdcInstructionAsync({ user: transactionSigner, deposit, userTokenAccount, tokenMint: mint, amount });
+  const redelegate = await getDelegateDepositInstructionAsync({
+    payer: transactionSigner,
+    owner: transactionSigner,
+    validator: PRIVATE_VALIDATOR,
+    bufferDeposit: depositDelegation.buffer,
+    delegationRecordDeposit: depositDelegation.record,
+    delegationMetadataDeposit: depositDelegation.metadata,
+    deposit,
+    user,
+    tokenMint: mint,
+  });
+  return {
+    deposit,
+    instructions: [getSetComputeUnitLimitInstruction({ units: 1_000_000 }), mutation, redelegate] as readonly Instruction[],
+    userTokenAccount,
+  } as const;
 }
 
 export async function fundFirstProtectedBalance(
