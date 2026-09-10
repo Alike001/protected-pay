@@ -31,14 +31,19 @@ const EXPECTED_AUTHORITY =
 const UPGRADEABLE_LOADER =
   "BPFLoaderUpgradeab1e11111111111111111111111" as Address;
 const BINARY_PATH = "target/deploy/protected_pay.so";
-const EXPECTED_BINARY_SHA256 =
-  "e7998fcd2c85f5accead0ba7e6317dfb6bfebed210ea1d18a0b622047d4f78f1";
+const V22_APPROVAL_FLAG = "--approved-p5-v22-devnet-buffer-upload";
+const isVersion22 = process.argv.includes(V22_APPROVAL_FLAG);
+const EXPECTED_BINARY_SHA256 = isVersion22
+  ? "4ed1f10108d2a62c7be3f10d8201ac440fcaaef1725952538b540d3c8ba080dd"
+  : "e7998fcd2c85f5accead0ba7e6317dfb6bfebed210ea1d18a0b622047d4f78f1";
 const BUFFER_METADATA_LENGTH = 37;
 const LOADER_WRITE_VARIANT = 1;
 const WRITE_CHUNK_LENGTH = 900;
 const BATCH_SIZE = 4;
 const VERIFY_CHUNK_LENGTH = 32_768;
-const APPROVAL_FLAG = "--approved-v21-devnet-buffer-upload";
+const APPROVAL_FLAG = isVersion22
+  ? V22_APPROVAL_FLAG
+  : "--approved-v21-devnet-buffer-upload";
 
 if (!process.argv.includes(APPROVAL_FLAG)) {
   throw new Error(`Refusing to broadcast without ${APPROVAL_FLAG}`);
@@ -152,7 +157,7 @@ const binary = await readFile(BINARY_PATH);
 const binarySha256 = createHash("sha256").update(binary).digest("hex");
 if (binarySha256 !== EXPECTED_BINARY_SHA256) {
   throw new Error(
-    `Refusing stale/unreviewed version-2.1 binary: expected ${EXPECTED_BINARY_SHA256}, got ${binarySha256}`,
+    `Refusing stale/unreviewed ${isVersion22 ? "version-2.2" : "version-2.1"} binary: expected ${EXPECTED_BINARY_SHA256}, got ${binarySha256}`,
   );
 }
 
@@ -432,7 +437,7 @@ console.log(
     cluster: "Solana Devnet",
     router: ROUTER_RPC_URL,
     bufferUploadComplete: true,
-    release: "version-2.1",
+    release: isVersion22 ? "version-2.2" : "version-2.1",
     programUpgradeExecuted: false,
     programId: PROGRAM_ID,
     programData: PROGRAM_DATA,

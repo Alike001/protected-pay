@@ -34,12 +34,17 @@ const UPGRADEABLE_LOADER =
   "BPFLoaderUpgradeab1e11111111111111111111111" as Address;
 const SYSTEM_PROGRAM = "11111111111111111111111111111111" as Address;
 const BINARY_PATH = "target/deploy/protected_pay.so";
-const EXPECTED_BINARY_SHA256 =
-  "5b2f04b8b347a85e5f7f03dc9305709aaaab7fb538738d348919a8811756d6f5";
+const V22_APPROVAL_FLAG = "--approved-p5-v22-buffer-signed-simulation";
+const isVersion22 = process.argv.includes(V22_APPROVAL_FLAG);
+const EXPECTED_BINARY_SHA256 = isVersion22
+  ? "4ed1f10108d2a62c7be3f10d8201ac440fcaaef1725952538b540d3c8ba080dd"
+  : "5b2f04b8b347a85e5f7f03dc9305709aaaab7fb538738d348919a8811756d6f5";
 const PROGRAM_DATA_METADATA_LENGTH = 45;
 const BUFFER_METADATA_LENGTH = 37;
 const UPLOAD_PROBE_LENGTH = 512;
-const APPROVAL_FLAG = "--approved-v2-devnet-upgrade-signed-simulation";
+const APPROVAL_FLAG = isVersion22
+  ? V22_APPROVAL_FLAG
+  : "--approved-v2-devnet-upgrade-signed-simulation";
 
 if (!process.argv.includes(APPROVAL_FLAG)) {
   throw new Error(`Refusing to sign without ${APPROVAL_FLAG}`);
@@ -269,7 +274,8 @@ console.log(
     simulationOnly: true,
     transactionBroadcast: false,
     cluster: "Solana Devnet",
-    checkpoint: "version-2 upgrade signed simulation",
+    checkpoint: `${isVersion22 ? "version-2.2 buffer" : "version-2 upgrade"} signed simulation`,
+    release: isVersion22 ? "version-2.2" : "version-2",
     provenInSignedSimulation: [
       "temporary loader buffer creation",
       "buffer initialization under the approved authority",

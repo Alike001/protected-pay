@@ -26,11 +26,19 @@ const EXPECTED_AUTHORITY =
 const UPGRADEABLE_LOADER =
   "BPFLoaderUpgradeab1e11111111111111111111111" as Address;
 const SYSTEM_PROGRAM = "11111111111111111111111111111111" as Address;
-const CURRENT_PROGRAM_LENGTH = 482_376;
-const NEW_PROGRAM_LENGTH = 635_136;
+const CURRENT_PROGRAM_LENGTH = 635_136;
+const NEW_PROGRAM_LENGTH = 700_672;
 const LOADER_PROGRAM_DATA_METADATA_LENGTH = 45;
 const ADDITIONAL_BYTES = NEW_PROGRAM_LENGTH - CURRENT_PROGRAM_LENGTH;
 const EXTEND_PROGRAM_VARIANT = 6;
+const APPROVAL_FLAG = "--approved-p5-v22-program-extension-signed-simulation";
+
+if (!process.argv.includes(APPROVAL_FLAG)) {
+  throw new Error(`Refusing to sign without ${APPROVAL_FLAG}`);
+}
+if (process.argv.includes("--send")) {
+  throw new Error("This checkpoint is simulation-only and cannot broadcast");
+}
 
 const keypairPath = process.env.SOLANA_KEYPAIR_PATH;
 if (!keypairPath) {
@@ -173,6 +181,7 @@ console.log(
     simulationOnly: true,
     transactionBroadcast: false,
     cluster: "Solana Devnet",
+    release: "version-2.2",
     instruction: "ExtendProgram",
     programId: PROGRAM_ID,
     programData: PROGRAM_DATA,
