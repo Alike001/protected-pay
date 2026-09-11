@@ -114,6 +114,7 @@
     "p5:verify:frontend-recovery": "tsx scripts/p5-verify-frontend-recovery.ts",
     "p5:verify:session-keys": "tsx scripts/p5-verify-session-keys.ts",
     "p5:verify:private-client-wrapper": "tsx scripts/p5-verify-private-client-wrapper.ts",
+    "p5:verify:payment-receipts": "tsx scripts/p5-verify-payment-receipts.ts",
     "p5:auth:simulate:balance-return": "tsx scripts/p5-auth-simulate-balance-return.ts --approved-p5-balance-return-tee-simulation",
     "p4:legacy:diagnose:expired-schedule": "tsx scripts/p4-auth-simulate-expired-schedule.ts --approved-p4-tee-auth-expired-schedule-simulation",
     "p4:auth:simulate:expired-cancel": "tsx scripts/p4-auth-simulate-expired-cancel.ts --approved-p4-tee-auth-expired-cancel-simulation",

@@ -66,7 +66,7 @@ export function usePrivatePayment(privateClient: PrivateClient | null, walletAdd
     setStatus("acting");
     setMessage(null);
     try {
-      await sendPrivateTransaction(privateClient, [
+      const signature = await sendPrivateTransaction(privateClient, [
         getSetComputeUnitLimitInstruction({ units: 200_000 }),
         getAcknowledgePaymentInstruction({
           recipient: address(walletAddress),
@@ -76,6 +76,7 @@ export function usePrivatePayment(privateClient: PrivateClient | null, walletAdd
         }),
       ]);
       await refresh();
+      return signature;
     } catch (error) {
       setStatus("error");
       setMessage(errorMessage(error));
@@ -89,7 +90,7 @@ export function usePrivatePayment(privateClient: PrivateClient | null, walletAdd
     setStatus("acting");
     setMessage(null);
     try {
-      await sendPrivateTransaction(privateClient, [
+      const signature = await sendPrivateTransaction(privateClient, [
         getSetComputeUnitLimitInstruction({ units: 200_000 }),
         getClaimPaymentInstruction({
           claimant: address(walletAddress),
@@ -100,6 +101,7 @@ export function usePrivatePayment(privateClient: PrivateClient | null, walletAdd
         }),
       ]);
       await refresh();
+      return signature;
     } catch (error) {
       setStatus("error");
       setMessage(errorMessage(error));

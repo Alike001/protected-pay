@@ -1,4 +1,6 @@
 import { Activity, ArrowLeftRight, LayoutDashboard, Send, Settings, ShieldCheck } from "lucide-react";
+import { useClient } from "@solana/react";
+import { useConnectedWallet } from "@solana/kit-plugin-wallet/react";
 import { useState } from "react";
 import { BrandMark } from "./components/BrandMark";
 import { ProofDrawer } from "./components/ProofDrawer";
@@ -7,6 +9,9 @@ import { LandingPage } from "./features/landing/LandingPage";
 import { RecipientPayment } from "./features/recipient/RecipientPayment";
 import { SenderDashboard } from "./features/sender/SenderDashboard";
 import { crossTabWorkflowIssue, workflowIssueFrom, type WorkflowIssue } from "./lib/workflowIssue";
+import type { AppClient } from "./client";
+
+const PREVIEW_WALLET = "6Etw8jh5pDdn8ZQp2sD1HtxHf42yM8gXrY8NqFzYcm6P";
 
 function getPreviewMode() {
   if (!import.meta.env.DEV) return null;
@@ -27,18 +32,22 @@ function getRecoveryPreview(): WorkflowIssue | null {
 }
 
 export default function App() {
+  const client = useClient<AppClient>();
+  const connected = useConnectedWallet(client);
+  const walletAddress = connected?.account.address ?? null;
   const [proofOpen, setProofOpen] = useState(false);
   const preview = getPreviewMode();
   const recoveryPreview = getRecoveryPreview();
   const paymentReference = new URLSearchParams(window.location.search).get("payment");
   const pathname = window.location.pathname.replace(/\/+$/, "") || "/";
+  const receiptWallet = preview === "sender" ? PREVIEW_WALLET : walletAddress;
 
   if (preview === "recipient" || paymentReference || pathname === "/pay") {
-    return <><RecipientPayment preview={preview === "recipient"} paymentReference={paymentReference} onShowProof={() => setProofOpen(true)} /><ProofDrawer open={proofOpen} onClose={() => setProofOpen(false)} /></>;
+    return <><RecipientPayment preview={preview === "recipient"} paymentReference={paymentReference} onShowProof={() => setProofOpen(true)} /><ProofDrawer open={proofOpen} onClose={() => setProofOpen(false)} walletAddress={receiptWallet} /></>;
   }
 
   if (preview !== "sender" && pathname !== "/app") {
-    return <><LandingPage onShowProof={() => setProofOpen(true)} /><ProofDrawer open={proofOpen} onClose={() => setProofOpen(false)} /></>;
+    return <><LandingPage onShowProof={() => setProofOpen(true)} /><ProofDrawer open={proofOpen} onClose={() => setProofOpen(false)} walletAddress={receiptWallet} /></>;
   }
 
   return (
@@ -60,7 +69,7 @@ export default function App() {
         <header className="topbar"><div className="mobile-brand"><BrandMark /></div><span className="network-note"><ArrowLeftRight size={14} /> Private safety window</span><WalletControl /></header>
         <SenderDashboard preview={preview === "sender"} previewIssue={recoveryPreview} onShowProof={() => setProofOpen(true)} />
       </div>
-      <ProofDrawer open={proofOpen} onClose={() => setProofOpen(false)} />
+      <ProofDrawer open={proofOpen} onClose={() => setProofOpen(false)} walletAddress={receiptWallet} />
     </div>
   );
 }

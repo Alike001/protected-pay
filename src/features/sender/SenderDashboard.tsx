@@ -33,6 +33,7 @@ import {
   releasePaymentOperationLease,
   writePaymentOperation,
 } from "../../lib/paymentCheckpointStorage";
+import { recordPaymentReceipt, usePaymentReceipts, type PaymentReceiptRecord } from "../../lib/paymentReceiptStorage";
 import { cancelProtectedPayment, discoverUsdcFundingSource, fundFirstProtectedBalance, type FirstFundingStage, type PaymentStage, type ProtectedPaymentReceipt } from "../../lib/paymentWorkflow";
 import { crossTabWorkflowIssue, workflowIssueFrom, type WorkflowIssue } from "../../lib/workflowIssue";
 import type { AppClient } from "../../client";
@@ -43,6 +44,14 @@ const PREVIEW_RECIPIENT = "Hfo7LD2FQk6o1uTiVMXvcfvuw9NT1J1qdQSZP9aG3qvQ";
 
 type Props = { preview: boolean; previewIssue?: WorkflowIssue | null; onShowProof: () => void };
 type SavedPayment = { paymentReference: string; memoEnvelope: string | null; sender: string };
+
+function receiptPresentation(receipt: PaymentReceiptRecord) {
+  if (receipt.action === "protected") return { label: "Payment protected", status: "Protected", statusClass: "pending" };
+  if (receipt.action === "undone") return { label: "Payment undone", status: "Recovered", statusClass: "recovered" };
+  if (receipt.action === "expired-recovered") return { label: "Expiry recovered", status: "Recovered", statusClass: "recovered" };
+  if (receipt.action === "acknowledged") return { label: "Payment acknowledged", status: "Acknowledged", statusClass: "pending" };
+  return { label: "Payment claimed", status: "Claimed", statusClass: "settled" };
+}
 
 function ApprovalSteps() {
   return (
@@ -147,6 +156,7 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
   const [paymentOwnedElsewhere, setPaymentOwnedElsewhere] = useState(false);
   const [paymentTabId] = useState(() => preview ? "preview" : getPaymentTabId());
   const livePayment = usePrivatePayment(privateBalance.privateClient, walletAddress, savedPayment?.paymentReference ?? null);
+  const paymentReceipts = usePaymentReceipts(walletAddress);
 
   useEffect(() => {
     if (!fundingOpen || !walletAddress || preview) return;
@@ -357,6 +367,18 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
           }
         },
       );
+      recordPaymentReceipt({
+        action: "protected",
+        amount: checkpoint.amount,
+        counterparty: checkpoint.recipient,
+        occurredAt: Date.now(),
+        payment: result.payment,
+        paymentReference: result.paymentReference,
+        privateSignature: result.privateSignature,
+        publicSignature: result.publicSignature,
+        role: "sender",
+        wallet: walletAddress,
+      });
       setReceipt(result);
       const saved = { paymentReference: result.paymentReference, memoEnvelope: result.memoEnvelope, sender: walletAddress } satisfies SavedPayment;
       setSavedPayment(saved);
@@ -404,7 +426,21 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
     setCanceling(true);
     setCancelError(null);
     try {
-      await cancelProtectedPayment(privateBalance.privateClient, address(walletAddress), paymentAddress);
+      const signature = await cancelProtectedPayment(privateBalance.privateClient, address(walletAddress), paymentAddress);
+      if (activeReference && livePayment.payment) {
+        recordPaymentReceipt({
+          action: "undone",
+          amount: livePayment.payment.amount.toString(),
+          counterparty: livePayment.payment.recipient,
+          occurredAt: Date.now(),
+          payment: paymentAddress,
+          paymentReference: activeReference,
+          privateSignature: signature,
+          publicSignature: receipt?.publicSignature ?? paymentReceipts.find((item) => item.paymentReference === activeReference)?.publicSignature ?? null,
+          role: "sender",
+          wallet: walletAddress,
+        });
+      }
       await privateBalance.refresh();
       setReceipt(null);
       setSavedPayment(null);
@@ -425,7 +461,23 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
     setCanceling(true);
     setCancelError(null);
     try {
-      await livePayment.claim();
+      const payment = livePayment.payment;
+      const paymentAddress = livePayment.paymentAddress;
+      const signature = await livePayment.claim();
+      if (signature && payment && paymentAddress && activeReference) {
+        recordPaymentReceipt({
+          action: "expired-recovered",
+          amount: payment.amount.toString(),
+          counterparty: payment.recipient,
+          occurredAt: Date.now(),
+          payment: paymentAddress,
+          paymentReference: activeReference,
+          privateSignature: signature,
+          publicSignature: paymentReceipts.find((item) => item.paymentReference === activeReference)?.publicSignature ?? null,
+          role: "sender",
+          wallet: walletAddress,
+        });
+      }
       await privateBalance.refresh();
       setSavedPayment(null);
       try { localStorage.removeItem(`protected-pay:last-payment:${walletAddress}`); } catch { /* persistence is best effort */ }
@@ -558,11 +610,14 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
         <div className="section-heading"><h2>Recent activity</h2><button className="text-button">View all</button></div>
         <div className="activity-table">
           <div className="activity-head"><span>Payment</span><span>Status</span><span>Amount</span><span>Date</span></div>
-          {preview ? <>
+          {paymentReceipts.length > 0 ? paymentReceipts.slice(0, 5).map((item) => {
+            const presentation = receiptPresentation(item);
+            return <div className="activity-row" key={`${item.action}:${item.privateSignature}`}><span><b>{presentation.label}</b><small>With {shortAddress(item.counterparty, 5)} · Private receipt {shortAddress(item.privateSignature, 5)}</small></span><span><em className={`status ${presentation.statusClass}`}>{presentation.status}</em></span><strong>{formatUsdc(BigInt(item.amount))} USDC</strong><span>{new Date(item.occurredAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span></div>;
+          }) : preview ? <>
             <div className="activity-row"><span><b>To {shortAddress(PREVIEW_RECIPIENT, 5)}</b><small>Invoice #184</small></span><span><em className="status pending">Pending</em></span><strong>125.00 USDC</strong><span>Today, 14:32</span></div>
             <div className="activity-row"><span><b>To 8Pjz…mL2q</b><small>Design retainer</small></span><span><em className="status settled">Settled</em></span><strong>420.00 USDC</strong><span>Sep 7, 10:18</span></div>
             <div className="activity-row"><span><b>To C4vQ…9zaK</b><small>Wrong address recovered</small></span><span><em className="status recovered">Recovered</em></span><strong>58.00 USDC</strong><span>Sep 5, 18:05</span></div>
-          </> : <div className="activity-empty">No payments in this browser session.</div>}
+          </> : <div className="activity-empty">No captured payment receipts in this browser yet.</div>}
         </div>
       </section>
 

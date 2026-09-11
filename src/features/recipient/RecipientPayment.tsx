@@ -10,6 +10,7 @@ import { usePrivateBalance } from "../../hooks/usePrivateBalance";
 import { usePrivatePayment } from "../../hooks/usePrivatePayment";
 import { formatUsdc, shortAddress } from "../../lib/format";
 import { decryptMemoFromRecipientLink, memoEnvelopeFromLocation } from "../../lib/memoEnvelope";
+import { recordPaymentReceipt } from "../../lib/paymentReceiptStorage";
 import { onboardRecipientDeposit } from "../../lib/paymentWorkflow";
 import { workflowIssueFrom, type WorkflowIssue } from "../../lib/workflowIssue";
 import type { AppClient } from "../../client";
@@ -86,10 +87,40 @@ export function RecipientPayment({ preview, paymentReference, onShowProof }: { p
   async function performAction() {
     setActionError(null);
     try {
-      if (canClaim) await live.claim();
+      if (canClaim && payment && live.paymentAddress && paymentReference && walletAddress) {
+        const privateSignature = await live.claim();
+        if (privateSignature) {
+          recordPaymentReceipt({
+            action: "claimed",
+            amount: payment.amount.toString(),
+            counterparty: payment.sender,
+            occurredAt: Date.now(),
+            payment: live.paymentAddress,
+            paymentReference,
+            privateSignature,
+            publicSignature: null,
+            role: "recipient",
+            wallet: walletAddress,
+          });
+        }
+      }
       else if (canAcknowledge && connected?.signer && walletAddress) {
-        await onboardRecipientDeposit(client, connected.signer, connected.signer.address);
-        await live.acknowledge();
+        const publicSignature = await onboardRecipientDeposit(client, connected.signer, connected.signer.address);
+        const privateSignature = await live.acknowledge();
+        if (privateSignature && payment && live.paymentAddress && paymentReference) {
+          recordPaymentReceipt({
+            action: "acknowledged",
+            amount: payment.amount.toString(),
+            counterparty: payment.sender,
+            occurredAt: Date.now(),
+            payment: live.paymentAddress,
+            paymentReference,
+            privateSignature,
+            publicSignature,
+            role: "recipient",
+            wallet: walletAddress,
+          });
+        }
       }
     } catch (error) {
       const issue = workflowIssueFrom(error, "The payment action failed.");
