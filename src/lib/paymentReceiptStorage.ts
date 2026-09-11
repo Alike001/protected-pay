@@ -10,6 +10,7 @@ export type PaymentReceiptRecord = {
   action: PaymentReceiptAction;
   amount: string;
   counterparty: string;
+  memoEnvelope?: string | null;
   occurredAt: number;
   payment: string;
   paymentReference: string;
@@ -23,6 +24,7 @@ export type PaymentReceiptRecord = {
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
 
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]+$/;
+const MEMO_ENVELOPE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 const ACTIONS = new Set<PaymentReceiptAction>(["protected", "undone", "expired-recovered", "acknowledged", "claimed"]);
 
 export function paymentReceiptKey(wallet: string) {
@@ -43,6 +45,11 @@ function parseReceipt(value: unknown, wallet: string): PaymentReceiptRecord | nu
     || (item.role !== "sender" && item.role !== "recipient")
     || typeof item.amount !== "string"
     || !/^\d+$/.test(item.amount)
+    || (item.memoEnvelope !== undefined && item.memoEnvelope !== null && (
+      typeof item.memoEnvelope !== "string"
+      || item.memoEnvelope.length > 2_048
+      || !MEMO_ENVELOPE.test(item.memoEnvelope)
+    ))
     || !validBase58(item.counterparty)
     || !validBase58(item.payment)
     || !validBase58(item.paymentReference)
@@ -56,6 +63,7 @@ function parseReceipt(value: unknown, wallet: string): PaymentReceiptRecord | nu
     action: item.action as PaymentReceiptAction,
     amount: item.amount,
     counterparty: item.counterparty,
+    memoEnvelope: item.memoEnvelope ?? null,
     occurredAt: item.occurredAt,
     payment: item.payment,
     paymentReference: item.paymentReference,
@@ -65,6 +73,22 @@ function parseReceipt(value: unknown, wallet: string): PaymentReceiptRecord | nu
     version: 1,
     wallet,
   };
+}
+
+export function findLatestRestorableSenderReceipt(receipts: readonly PaymentReceiptRecord[], wallet: string | null) {
+  if (!wallet) return null;
+  const latestByPayment = new Map<string, PaymentReceiptRecord>();
+  for (const receipt of receipts) {
+    const current = latestByPayment.get(receipt.paymentReference);
+    if (receipt.wallet === wallet && receipt.role === "sender" && (!current || receipt.occurredAt > current.occurredAt)) {
+      latestByPayment.set(receipt.paymentReference, receipt);
+    }
+  }
+  let latest: PaymentReceiptRecord | null = null;
+  for (const receipt of latestByPayment.values()) {
+    if (receipt.action === "protected" && (!latest || receipt.occurredAt > latest.occurredAt)) latest = receipt;
+  }
+  return latest;
 }
 
 export function readPaymentReceipts(wallet: string, storage: StorageLike = window.localStorage) {

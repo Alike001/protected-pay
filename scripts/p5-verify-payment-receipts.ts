@@ -1,4 +1,5 @@
 import {
+  findLatestRestorableSenderReceipt,
   MAX_PAYMENT_RECEIPTS,
   paymentReceiptKey,
   readPaymentReceipts,
@@ -17,12 +18,14 @@ const payment = "57NP9wnbafbng8rceQbu9bpgdvKGugD5gYP5MnrMTEkF";
 const paymentReference = "94g7Y1ApCzMFtNQnidcqu8qwUPGbHAa27zaXrF7qdjwW";
 const counterparty = "Hfo7LD2FQk6o1uTiVMXvcfvuw9NT1J1qdQSZP9aG3qvQ";
 const signature = "4pkb5J1fXUdbhapTnNWwsZNaDTvYW4MRbui3azXqK7aKuLkGjWfrFHEGuvESyBbV8gRE2Dwysg3EciCyReN6p6Kx";
+const memoEnvelope = "AAECAw.QkNERQ.RkdISQ";
 
 const unsafeInput = {
   action: "expired-recovered" as const,
   amount: "1000000",
   authToken: "must-not-be-stored",
   counterparty,
+  memoEnvelope,
   memo: "plaintext-must-not-be-stored",
   occurredAt: 1_789_106_765_000,
   payment,
@@ -39,6 +42,7 @@ const serialized = storage.getItem(paymentReceiptKey(wallet)) ?? "";
 if (serialized.includes("must-not-be-stored") || serialized.includes("plaintext")) {
   throw new Error("Receipt storage retained a forbidden secret or plaintext note");
 }
+if (!serialized.includes(memoEnvelope)) throw new Error("Encrypted recipient-link memo envelope was not retained");
 
 if (!recordPaymentReceipt({ ...unsafeInput, occurredAt: unsafeInput.occurredAt + 1 }, storage)) {
   throw new Error("Receipt upsert failed");
@@ -71,12 +75,24 @@ if (receipts.some((item, index) => index > 0 && receipts[index - 1]!.occurredAt 
   throw new Error("Receipt history is not newest-first");
 }
 
+const newestProtected = receipts.find((item) => item.action === "protected");
+if (!newestProtected || findLatestRestorableSenderReceipt(receipts, wallet)?.privateSignature !== newestProtected.privateSignature) {
+  throw new Error("Newest unresolved sender payment was not restorable");
+}
+if (!recordPaymentReceipt({ ...newestProtected, action: "undone", occurredAt: newestProtected.occurredAt + 1 }, storage)) {
+  throw new Error("Terminal receipt was rejected");
+}
+if (findLatestRestorableSenderReceipt(readPaymentReceipts(wallet, storage), wallet)?.paymentReference === newestProtected.paymentReference) {
+  throw new Error("Terminal sender payment was incorrectly restored");
+}
+
 storage.setItem(paymentReceiptKey("bad-wallet"), JSON.stringify([{ version: 1, wallet: "bad-wallet", privateSignature: "not base58" }]));
 if (readPaymentReceipts("bad-wallet", storage).length !== 0) throw new Error("Malformed receipt was trusted");
 
 console.log(JSON.stringify({
   boundedTo: receipts.length,
   newestFirst: true,
+  unresolvedPaymentRestorable: true,
   plaintextMemoStored: false,
   secretsStored: false,
   validatedOnRead: true,

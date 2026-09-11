@@ -33,7 +33,7 @@ import {
   releasePaymentOperationLease,
   writePaymentOperation,
 } from "../../lib/paymentCheckpointStorage";
-import { recordPaymentReceipt, usePaymentReceipts, type PaymentReceiptRecord } from "../../lib/paymentReceiptStorage";
+import { findLatestRestorableSenderReceipt, recordPaymentReceipt, usePaymentReceipts, type PaymentReceiptRecord } from "../../lib/paymentReceiptStorage";
 import { cancelProtectedPayment, discoverUsdcFundingSource, fundFirstProtectedBalance, type FirstFundingStage, type PaymentStage, type ProtectedPaymentReceipt } from "../../lib/paymentWorkflow";
 import { crossTabWorkflowIssue, workflowIssueFrom, type WorkflowIssue } from "../../lib/workflowIssue";
 import type { AppClient } from "../../client";
@@ -155,8 +155,12 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
   const [paymentRecoveryLoaded, setPaymentRecoveryLoaded] = useState(preview);
   const [paymentOwnedElsewhere, setPaymentOwnedElsewhere] = useState(false);
   const [paymentTabId] = useState(() => preview ? "preview" : getPaymentTabId());
-  const livePayment = usePrivatePayment(privateBalance.privateClient, walletAddress, savedPayment?.paymentReference ?? null);
   const paymentReceipts = usePaymentReceipts(walletAddress);
+  const restoredReceipt = useMemo(
+    () => findLatestRestorableSenderReceipt(paymentReceipts, walletAddress),
+    [paymentReceipts, walletAddress],
+  );
+  const livePayment = usePrivatePayment(privateBalance.privateClient, walletAddress, savedPayment?.paymentReference ?? restoredReceipt?.paymentReference ?? null);
 
   useEffect(() => {
     if (!fundingOpen || !walletAddress || preview) return;
@@ -303,11 +307,11 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
     if (privateBalance.status !== "error" || !privateBalance.message) return null;
     return workflowIssueFrom(privateBalance.message, "The private balance could not be unlocked.");
   }, [privateBalance.message, privateBalance.status]);
-  const activeReference = receipt?.paymentReference ?? savedPayment?.paymentReference ?? null;
-  const activeEnvelope = receipt?.memoEnvelope ?? savedPayment?.memoEnvelope ?? null;
+  const activeReference = receipt?.paymentReference ?? savedPayment?.paymentReference ?? restoredReceipt?.paymentReference ?? null;
+  const activeEnvelope = receipt?.memoEnvelope ?? savedPayment?.memoEnvelope ?? restoredReceipt?.memoEnvelope ?? null;
   const recipientLink = activeReference ? `${window.location.origin}/pay?payment=${activeReference}${activeEnvelope ? `#memo=${encodeURIComponent(activeEnvelope)}` : ""}` : null;
-  const activeAmount = livePayment.payment ? formatUsdc(livePayment.payment.amount) : amount;
-  const activeRecipient = livePayment.payment?.recipient ?? recipient;
+  const activeAmount = livePayment.payment ? formatUsdc(livePayment.payment.amount) : restoredReceipt ? formatUsdc(BigInt(restoredReceipt.amount)) : amount;
+  const activeRecipient = livePayment.payment?.recipient ?? restoredReceipt?.counterparty ?? recipient;
   const canUndoActive = Boolean(receipt) || livePayment.payment?.status === PaymentStatus.Created || livePayment.payment?.status === PaymentStatus.Acknowledged;
   const canRecoverExpired = !recovered
     && livePayment.payment?.status === PaymentStatus.Expired
@@ -315,6 +319,7 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
     && livePayment.payment.amount > 0n
     && livePayment.payment.sender === walletAddress;
   const hasCurrentPayment = Boolean(receipt)
+    || Boolean(restoredReceipt)
     || Boolean(
       livePayment.payment
       && !livePayment.payment.redacted
@@ -385,6 +390,7 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
         occurredAt: Date.now(),
         payment: result.payment,
         paymentReference: result.paymentReference,
+        memoEnvelope: result.memoEnvelope,
         privateSignature: result.privateSignature,
         publicSignature: result.publicSignature,
         role: "sender",
@@ -610,9 +616,9 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
         </section>
       </div>
 
-      {preview ? <ActivePayment onUndo={() => setUndoing(true)} /> : recovered ? (
+      {preview && !restoredReceipt ? <ActivePayment onUndo={() => setUndoing(true)} /> : recovered ? (
         <section className="panel confirmed-payment recovered-payment"><span className="icon-tile success"><RotateCcw size={19} /></span><div><h2>Payment recovered</h2><p>The test USDC is back in your protected balance.</p></div></section>
-      ) : receipt || livePayment.payment ? (
+      ) : receipt || livePayment.payment || restoredReceipt ? (
         <section className="panel confirmed-payment"><span className="icon-tile success">{canRecoverExpired ? <RotateCcw size={19} /> : <Check size={19} />}</span><div><h2>{canRecoverExpired ? "Payment expired safely" : receipt ? "Payment protected" : "Payment restored"}</h2><p>{canRecoverExpired ? "The recipient did not acknowledge in time. Recover the test USDC to your protected balance." : ` ${activeAmount} test USDC to ${shortAddress(activeRecipient, 7)}. Share this private-view link with the intended recipient.`}</p>{recipientLink && <code>{recipientLink}</code>}{cancelError && <p className="workflow-error" role="alert">{cancelError}</p>}</div><div className="confirmed-actions"><button className="secondary-action" onClick={() => recipientLink && navigator.clipboard.writeText(recipientLink)} disabled={!recipientLink}>Copy link</button>{canUndoActive && <button className="undo-button" onClick={() => setUndoing(true)}><RotateCcw size={16} /> Undo</button>}{canRecoverExpired && <button className="undo-button" onClick={recoverExpiredPayment} disabled={canceling}><RotateCcw size={16} /> {canceling ? "Recovering…" : "Recover expired"}</button>}</div></section>
       ) : (
         <section className="panel empty-payment"><span className="icon-tile"><Clock3 size={19} /></span><div><h2>No active payment</h2><p>Protected payments that need your attention will appear here.</p></div></section>
