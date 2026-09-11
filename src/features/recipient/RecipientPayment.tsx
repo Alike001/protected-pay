@@ -10,12 +10,13 @@ import { usePrivateBalance } from "../../hooks/usePrivateBalance";
 import { usePrivatePayment } from "../../hooks/usePrivatePayment";
 import { formatUsdc, shortAddress } from "../../lib/format";
 import { decryptMemoFromRecipientLink, memoEnvelopeFromLocation } from "../../lib/memoEnvelope";
-import { recordPaymentReceipt } from "../../lib/paymentReceiptStorage";
+import { recordPaymentReceipt, usePaymentReceipts } from "../../lib/paymentReceiptStorage";
 import { onboardRecipientDeposit } from "../../lib/paymentWorkflow";
 import { workflowIssueFrom, type WorkflowIssue } from "../../lib/workflowIssue";
 import type { AppClient } from "../../client";
 
 const PREVIEW_SENDER = "6EtwPqDdXXGrWQF8DBTzeeoj7uqCyLZ87YR3cZRfiDYn";
+const PREVIEW_RECIPIENT = "Hfo7LD2FQk6o1uTiVMXvcfvuw9NT1J1qdQSZP9aG3qvQ";
 
 function formatRemaining(deadlineSeconds: bigint | null, now: number) {
   if (!deadlineSeconds) return "—:—";
@@ -31,6 +32,13 @@ export function RecipientPayment({ preview, paymentReference, onShowProof }: { p
   const walletAddress = connected?.account.address ?? null;
   const privateSession = usePrivateBalance(client, preview ? null : walletAddress);
   const live = usePrivatePayment(privateSession.privateClient, walletAddress, preview ? null : paymentReference ?? null);
+  const receiptWallet = preview ? PREVIEW_RECIPIENT : walletAddress;
+  const paymentReceipts = usePaymentReceipts(receiptWallet);
+  const claimedReceipt = paymentReference ? paymentReceipts.find((receipt) => (
+    receipt.action === "claimed"
+    && receipt.paymentReference === paymentReference
+    && receipt.role === "recipient"
+  )) ?? null : null;
   const [now, setNow] = useState(Date.now());
   const [actionError, setActionError] = useState<WorkflowIssue | null>(null);
   const [privateMemo, setPrivateMemo] = useState<string | null>(null);
@@ -57,19 +65,20 @@ export function RecipientPayment({ preview, paymentReference, onShowProof }: { p
   }, [payment]);
 
   const deadline = payment ? (payment.status === PaymentStatus.Acknowledged ? payment.settleAfter : payment.expiresAt) : null;
-  const countdown = preview ? "03:42" : formatRemaining(deadline, now);
-  const statusLabel = preview || payment?.status === PaymentStatus.Created ? "Waiting for you" : payment?.status === PaymentStatus.Acknowledged ? "Acknowledged" : payment?.status === PaymentStatus.Settled ? "Ready to claim" : payment?.status === PaymentStatus.Expired ? "Expired" : payment?.status === PaymentStatus.Cancelled ? "Cancelled" : "Private";
+  const countdown = claimedReceipt ? "00:00" : preview ? "03:42" : formatRemaining(deadline, now);
+  const statusLabel = claimedReceipt ? "Claimed" : preview || payment?.status === PaymentStatus.Created ? "Waiting for you" : payment?.status === PaymentStatus.Acknowledged ? "Acknowledged" : payment?.status === PaymentStatus.Settled ? "Ready to claim" : payment?.status === PaymentStatus.Expired ? "Expired" : payment?.status === PaymentStatus.Cancelled ? "Cancelled" : "Private";
   const canAcknowledge = payment?.status === PaymentStatus.Created && payment.recipient === walletAddress;
   const canClaim = payment?.status === PaymentStatus.Settled && payment.recipient === walletAddress;
-  const actionLabel = live.status === "acting" ? "Confirming…" : canClaim ? "Claim test USDC" : canAcknowledge ? "Acknowledge payment" : payment?.status === PaymentStatus.Acknowledged ? "Acknowledged — waiting" : "No action available";
-  const visible = preview || Boolean(payment);
-  const amount = preview ? "125.00" : payment ? formatUsdc(payment.amount) : "—";
-  const sender = preview ? PREVIEW_SENDER : payment?.sender ?? null;
+  const actionLabel = claimedReceipt ? "Payment claimed" : live.status === "acting" ? "Confirming…" : canClaim ? "Claim test USDC" : canAcknowledge ? "Acknowledge payment" : payment?.status === PaymentStatus.Acknowledged ? "Acknowledged — waiting" : "No action available";
+  const visible = preview || Boolean(payment) || Boolean(claimedReceipt);
+  const amount = claimedReceipt ? formatUsdc(BigInt(claimedReceipt.amount)) : preview ? "125.00" : payment ? formatUsdc(payment.amount) : "—";
+  const sender = claimedReceipt?.counterparty ?? (preview ? PREVIEW_SENDER : payment?.sender ?? null);
   const primaryIssue = useMemo(() => {
+    if (claimedReceipt) return null;
     if (actionError) return actionError;
     const message = live.message ?? privateSession.message;
     return message ? workflowIssueFrom(message, "The private payment needs attention.") : null;
-  }, [actionError, live.message, privateSession.message]);
+  }, [actionError, claimedReceipt, live.message, privateSession.message]);
 
   useEffect(() => {
     if (primaryIssue?.kind === "authentication-expired") privateSession.lock();
@@ -133,11 +142,11 @@ export function RecipientPayment({ preview, paymentReference, onShowProof }: { p
     <div className="recipient-page">
       <header className="recipient-header"><BrandMark /><WalletControl /></header>
       <main className="recipient-main">
-        <div className="recipient-intro"><span className="icon-tile large"><ShieldCheck size={24} /></span><div><h1>Payment waiting for you</h1><p>Connect the intended wallet to view and acknowledge this test payment.</p></div></div>
+        <div className="recipient-intro"><span className="icon-tile large"><ShieldCheck size={24} /></span><div><h1>{claimedReceipt ? "Payment claimed" : "Payment waiting for you"}</h1><p>{claimedReceipt ? "The test USDC is now in your protected balance." : "Connect the intended wallet to view and acknowledge this test payment."}</p></div></div>
 
         {!preview && !paymentReference && <div className="access-message"><strong>Payment reference missing</strong><p>Ask the sender to copy the complete recipient link.</p></div>}
         {!preview && paymentReference && !connected && <div className="access-message"><strong>Connect the recipient wallet</strong><p>Private payment fields remain hidden until the intended wallet authenticates.</p></div>}
-        {!preview && connected && privateSession.status !== "ready" && (
+        {!preview && !claimedReceipt && connected && privateSession.status !== "ready" && (
           <button className="unlock-payment" onClick={() => void unlockPayment()} disabled={privateSession.status === "loading"}>
             <LockKeyhole size={17} /> {privateSession.status === "loading" ? "Unlocking private payment…" : "Unlock private payment"}
           </button>
@@ -145,14 +154,14 @@ export function RecipientPayment({ preview, paymentReference, onShowProof }: { p
         {primaryIssue && !visible && <WorkflowIssueNotice issue={primaryIssue} />}
 
         <section className={`recipient-card ${!visible ? "concealed" : ""}`}>
-          <div className="recipient-countdown"><div className="countdown-ring large"><strong>{countdown}</strong><span>remaining</span></div><span className="status pending">{statusLabel}</span></div>
+          <div className="recipient-countdown"><div className="countdown-ring large"><strong>{countdown}</strong><span>remaining</span></div><span className={`status ${claimedReceipt ? "settled" : "pending"}`}>{statusLabel}</span></div>
           <div className="recipient-amount"><strong>{amount}</strong><span>test USDC</span></div>
           <dl className="recipient-details">
             <div><dt>From</dt><dd>{sender ? shortAddress(sender, 7) : "Hidden"}</dd></div>
-            <div><dt>Private note</dt><dd>{preview ? "Invoice #184" : payment ? privateMemo ?? "Opening encrypted note…" : "Hidden"}</dd></div>
+            <div><dt>Private note</dt><dd>{claimedReceipt ? "Erased after claim" : preview ? "Invoice #184" : payment ? privateMemo ?? "Opening encrypted note…" : "Hidden"}</dd></div>
           </dl>
-          <button className="primary-action" onClick={performAction} disabled={!preview && ((!canAcknowledge && !canClaim) || live.status === "acting")}>{preview ? "Acknowledge payment" : actionLabel}</button>
-          <p className="action-explainer">Acknowledging confirms this wallet is ready to receive. First-time recipients may see one setup approval before the private acknowledgement.</p>
+          <button className="primary-action" onClick={performAction} disabled={Boolean(claimedReceipt) || (!preview && ((!canAcknowledge && !canClaim) || live.status === "acting"))}>{claimedReceipt ? actionLabel : preview ? "Acknowledge payment" : actionLabel}</button>
+          <p className="action-explainer">{claimedReceipt ? "The test USDC was credited to this wallet's protected balance. The private payment fields are now permanently erased." : "Acknowledging confirms this wallet is ready to receive. First-time recipients may see one setup approval before the private acknowledgement."}</p>
           {primaryIssue && visible && <WorkflowIssueNotice issue={primaryIssue} />}
         </section>
 
@@ -160,8 +169,8 @@ export function RecipientPayment({ preview, paymentReference, onShowProof }: { p
           <h2>How this payment works</h2>
           <ol>
             <li className="done"><span><Check size={15} /></span><div><strong>Payment protected</strong><p>The sender placed test USDC into a private safety window.</p></div></li>
-            <li className={payment?.status === PaymentStatus.Acknowledged || payment?.status === PaymentStatus.Settled ? "done" : "current"}><span>{payment?.status === PaymentStatus.Acknowledged || payment?.status === PaymentStatus.Settled ? <Check size={15} /> : "2"}</span><div><strong>You acknowledge</strong><p>Confirm that this is the correct recipient wallet.</p></div></li>
-            <li className={payment?.status === PaymentStatus.Settled ? "done" : ""}><span>{payment?.status === PaymentStatus.Settled ? <Check size={15} /> : "3"}</span><div><strong>Funds settle</strong><p>After the deadline, the payment becomes claimable.</p></div></li>
+            <li className={claimedReceipt || payment?.status === PaymentStatus.Acknowledged || payment?.status === PaymentStatus.Settled ? "done" : "current"}><span>{claimedReceipt || payment?.status === PaymentStatus.Acknowledged || payment?.status === PaymentStatus.Settled ? <Check size={15} /> : "2"}</span><div><strong>You acknowledge</strong><p>Confirm that this is the correct recipient wallet.</p></div></li>
+            <li className={claimedReceipt || payment?.status === PaymentStatus.Settled ? "done" : ""}><span>{claimedReceipt || payment?.status === PaymentStatus.Settled ? <Check size={15} /> : "3"}</span><div><strong>Funds settle</strong><p>After the deadline, the payment becomes claimable.</p></div></li>
           </ol>
         </section>
 

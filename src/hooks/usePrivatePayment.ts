@@ -33,6 +33,9 @@ export function usePrivatePayment(privateClient: PrivateClient | null, walletAdd
       if (response.value.owner !== PROGRAM_ID) throw new Error("The payment account has an unexpected owner.");
       const decoded = getPaymentDecoder().decode(decodeAccountData(response.value.data as [string, "base64"]));
       if (!decoded.initialized) throw new Error("The payment has not opened yet.");
+      if (walletAddress && decoded.redacted && decoded.sender !== walletAddress) {
+        throw new Error("This payment has already been finalized and its private fields were erased.");
+      }
       if (walletAddress && decoded.recipient !== walletAddress && decoded.sender !== walletAddress) {
         throw new Error("This payment belongs to different wallets.");
       }
