@@ -119,4 +119,4 @@ Signed simulation passed before broadcast: true
 Independent finalized audit: passed
 ```
 
-The remaining live gate is to create a real browser Session Token and prove session-signed private open/schedule, explicit revocation, and expired/revoked denial before continuing the complete payment lifecycle.
+The live browser gate is now complete. Wallet `4C2Gz…bkvvR` created bounded Session Token `HNQLk2…BrfsX`, used its in-memory signer for a private `0.01` test-USDC open and sender Undo, and explicitly revoked the token in finalized public Devnet transaction `4tHz2r…oDCTx` at slot `496542267`. The 112-byte token closed, its rent returned to the authority, public test-USDC custody stayed unchanged, and the app erased the signer and masked private state. A subsequent unsigned, non-broadcast Private ER simulation referencing that closed token failed at the session constraint with Anchor `AccountNotInitialized (3012)`, proving the authorization account cannot be reused without reconstructing or persisting the destroyed in-memory key.
