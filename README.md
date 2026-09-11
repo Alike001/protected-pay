@@ -1,67 +1,126 @@
 # Protected Pay
 
-Protected Pay is a private, reversible USDC payment workflow for Solana. A sender can place a payment in a protected pending state, the intended recipient can acknowledge it, and MagicBlock deadlines resolve who is entitled to the per-payment escrow.
+Private, reversible Circle USDC payments on Solana, with an automated safety window powered by MagicBlock.
 
-The product is being built for the MagicBlock Blitz hackathon. MagicBlock is not a decorative dependency: delegated account state is intended to keep live balances and payment details private, Ephemeral Rollups provide fast state transitions, and MagicBlock Crank will drive deterministic settlement or expiry while users are offline.
+Protected Pay lets a sender place test USDC into per-payment escrow, share a private recipient link, and undo a mistake before settlement. The intended recipient can acknowledge the payment; MagicBlock Crank then advances it without either user remaining online. A settled payment is claimable only by the recipient, while an unacknowledged expired payment is recoverable only by the sender.
 
-## Current build status
+> Devnet demonstration only. Circle Devnet USDC has no financial value. This code is not audited or production-ready.
 
-The risk-first feasibility phase is complete:
+## Why it exists
 
-1. **G1 — Core pass:** Circle Devnet test USDC completed a real vault, delegated-private-accounting, commit, and withdrawal round trip.
-2. **G2 — Pass:** MagicBlock Crank executed three scheduled private transactions without the user online; the idempotent state transition occurred exactly once and committed back to Solana.
-3. **G3 — Narrow pass:** unauthenticated and unrelated authenticated wallets could not read protected state, but permission membership, delegation metadata, timing, pre-delegation state, and committed terminal state are public.
+Ordinary crypto transfers become difficult or impossible to reverse once broadcast. Protected Pay adds a short, program-enforced safety period while keeping the amount, note commitment, live status, deadlines, task identifier, and aggregate balances inside MagicBlock's authenticated Private ER while the payment is pending.
 
-The project will therefore proceed with the precise claim **“private while pending inside MagicBlock's authenticated Private ER,”** not anonymous or permanently secret payments.
+The project deliberately does **not** claim anonymous or permanently secret payments. Sender, recipient, payment identifier, mint, permission membership, validator, and delegation timing remain public. Terminal state is committed back to Solana in redacted form with a cryptographic commitment.
 
-Phase 4's first deployed lifecycle proved private open and sender recovery, then exposed a real permission-topology constraint: one Crank instruction cannot safely touch both users' owner-only aggregate Deposits. Version 2 moves pending liability into the shared Payment, lets Crank mutate only that Payment, and adds owner-only terminal claims. Version 2.1 is now deployed with the corrected six-call cadence.
+## Live build status
 
-The first live version-2 atomic open-plus-schedule transaction finalized and moved 1 test USDC into private per-Payment escrow. Its five Crank executions also finalized, but the live cadence proved that iteration 1 runs immediately: the five calls landed at `createdAt + 0, +60, +120, +180, +240`, one call short of the `+300` expiry boundary. The recipient client correctly refused to sign a late acknowledgement, and no recipient transaction was broadcast. Version 2.1 corrects the schedule to six iterations; 23 Rust tests, regenerated IDL/client, TypeScript, clippy, and the optimized SBF build pass. The exact 633,568-byte binary was byte-verified, signature-verified in simulation, and finalized on Devnet at slot `495731340`. An atomic `advance_payment` plus sender-only `claim_payment` recovery finalized on the Private ER, returning the 1 test-USDC escrow stranded by the old schedule and redacting its terminal terms. A fresh acknowledged-payment shell and permission are now delegated on Devnet with both private Deposits excluded and all financial data unchanged. The project uses only non-value Devnet test assets and is not audited or production-ready.
+- Anchor program version 2.2 is deployed on Solana Devnet.
+- Real Circle Devnet USDC funding, delegation, withdrawal, protected send, sender Undo, unattended expiry/recovery, recipient acknowledgement, unattended settlement, and recipient claim have run through the browser product.
+- One-hour MagicBlock Session Tokens scope an in-memory signer to Protected Pay. Wallet keys, authentication tokens, session signers, and plaintext notes are never stored in browser receipts.
+- Retry-safe checkpoints reconcile prepared signatures and authoritative state before any resend.
+- Explicit session revocation closes the token account and invalidates further session-signed actions.
 
-The fresh version-2.1 Payment now passes sender-authenticated, signature-verified simulation of atomic private open plus a six-iteration Payment-only Crank schedule. The simulated 1 test-USDC escrow did not persist, both aggregate Deposits are absent from the scheduled instruction, protected arguments are absent from program logs, and unauthenticated reads remain denied. Live broadcast remains separately gated.
+## Deployed identifiers
 
-The separately approved live version-2.1 open and six-call schedule finalized on the Private ER, followed immediately by a recipient-authenticated acknowledgement that also passed signed simulation before broadcast. The Payment is privately `Acknowledged`, 1 test USDC remains in its individual escrow, neither aggregate Deposit was exposed to the other party, and the next Crank observation must prove automatic settlement before recipient claim.
+| Item | Value |
+| --- | --- |
+| Network | Solana Devnet |
+| Protected Pay program | `w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk` |
+| Circle Devnet USDC mint | `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` |
+| MagicBlock Private ER | `https://devnet-tee.magicblock.app` |
+| MagicBlock validator | `MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo` |
 
-Recipient-authenticated readback now confirms the live Payment autonomously reached `Settled`. A signature-verified claim simulation credits the recipient's private available balance from 0 to 1 test USDC and redacts the Payment behind the verified terminal commitment; the simulation persisted nothing and claim broadcast remains separately gated.
+## How it works
 
-The approved recipient claim subsequently finalized on the Private ER. The recipient now holds 1 test USDC in private available accounting, the Payment remains `Settled` with sensitive terms redacted and escrow cleared, and the public vault still holds all 3 test USDC collateral. This completes the corrected live settlement path; the fresh unattended-expiry path remains next.
+```text
+Sender wallet
+  ├─ public Devnet: fund vault, create Session Token, prepare/delegate Payment
+  └─ authenticated Private ER: open escrow + schedule six Crank calls
+                                      │
+                         private recipient link
+                                      │
+Recipient wallet ── acknowledge ──────┤
+                                      │
+MagicBlock Crank ── settle or expire ─┘
+            ├─ Settled → recipient-only claim
+            └─ Expired → sender-only recovery
+```
 
-A separate deterministic version-2.1 expiry fixture is now delegated on Devnet. Its empty Payment shell and permission were created and then delegated in separately approved, simulation-first transactions. Both temporary delegation buffers closed, persistent records and metadata exist, no USDC moved, and neither private Deposit changed.
+Pending liability lives in the shared `Payment`, so the automated Crank instruction never needs either user's owner-only aggregate `Deposit`. Terminal claims touch only the payment and the claimant's own deposit. Claiming seals the payment, clears its sensitive fields, and leaves a terminal commitment.
 
-The separately approved sender-authenticated expiry transaction finalized on the Private ER, moving 1 test USDC from the sender's private available balance into individual Payment escrow and registering six Payment-only Crank calls. All six validator-signed executions finalized exactly 60 seconds apart without the sender online; the first five were safe no-ops and call six changed the Payment from `Created` to `Expired` at the exact 300-second boundary. The escrow remains intact for the sender's separately gated recovery claim, protected arguments stayed out of logs, public state did not change, and unauthenticated reads remain denied.
+## Product flow
 
-The separately approved sender-only expiry claim finalized on the Private ER. It restored the sender balance from 1 to 2 test USDC, cleared the escrow, and redacted sensitive Payment fields behind an independently reproduced terminal commitment. A separate authenticated verifier confirmed the exact successful receipt, sender-only signature, terminal state, unchanged public vault and shells, and continued outsider denial. Signed retry simulations then proved terminal `advance_payment` is a byte-for-byte no-op and duplicate `claim_payment` fails with `PaymentRedacted (6022)` without crediting twice.
+1. Connect a Solana wallet in Phantom Testnet Mode.
+2. Fund the protected balance with Circle Devnet USDC.
+3. Enter a different recipient wallet, an amount, and an optional private note.
+4. Review the exact approval sequence and protect the payment.
+5. Share the generated `/pay?payment=...` link with the recipient.
+6. The recipient authenticates and acknowledges before expiry.
+7. After automatic settlement, the recipient claims the test USDC.
+8. Before settlement, the sender can Undo; after unattended expiry, only the sender can recover.
 
-The corrected Payment layout has now passed its field-by-field privacy audit and terminal closeout. Sender, recipient, payment ID, mint, permission membership, validator, and delegation timing are public; amount, memo hash, live status and deadlines, task ID, and aggregate balances remain protected while delegated. The 320-byte Payment-only closeout passed signature-verified simulation and then finalized across the Private ER and Solana Devnet. The public Payment contains only its redacted terminal form and exact commitment; both aggregate Deposits remain delegated, the original amount and memo are absent from public logs and state, no USDC moved, and the vault still holds 3 test USDC.
+The cold sender flow honestly requires one off-chain Query Filtering login message and two public approvals: one bounded Session Token and one Payment preparation/delegation transaction. With a live session, only Payment preparation requires Phantom; private actions use the bounded in-memory signer.
 
-This completes the Phase 4 live state-machine and privacy proof. A funded sender's public Payment creation and two delegations also fit in one 797-byte simulated transaction. The local Phase 5.1 authorization upgrade keeps the honest cold-flow count at two public transaction approvals plus one off-chain TEE login message: one public approval creates a one-hour Session Token scoped to Protected Pay, the other prepares/delegates the Payment, and the temporary in-memory key signs private open/schedule without invoking Phantom's base-layer simulator. With a live session, only the Payment preparation approval remains. The product does not claim one-click sending.
+## Run locally
 
-Phase 5 is now in progress. The React/Vite product implements a product-first landing page, the 30-second sender dashboard, recipient payment route, real Wallet Standard discovery/connection, challenge-validated Private ER reads, one-hour program-scoped MagicBlock Session Tokens, in-memory private signers, explicit session revocation, protected-balance and Payment reads, first and subsequent test-USDC funding, retry-safe withdrawal, one-time recipient onboarding, an honest three-stage approval review, sender Undo and expired-payment recovery, recipient acknowledgement/claim, encrypted link-carried notes, authoritative-deadline polling, and cross-tab recovery checkpoints. Payment creation persists one identity before any transaction signature, reconciles prepared signatures against authoritative public/private state, and never retains the plaintext memo in its checkpoint. A short per-wallet browser lease makes other tabs read-only while one tab is signing or reconciling, then permits recovery after a stale tab disappears. Rejected signatures, delayed confirmations, wallet disconnection, expired private authentication, and network interruption now have distinct recovery guidance rather than raw error copy. The session-aware browser builder reproduces the 797-byte public setup and a 626-byte private open/schedule transaction with the exact six-call cadence. The official Session Keys program also accepted the exact 11,296-CU create-session instruction in an unsigned Devnet simulation. The 677,280-byte version-2.2 authorization binary is now deployed on Devnet and independently matches the reviewed local SHA-256; the upload Buffer closed and its rent was refunded. The first live version-2.2 browser flow then created a real bounded Session Token and used its in-memory signer to atomically open and schedule a 1 test-USDC payment while the unauthenticated public shell remained redacted. Development-only `?preview=sender` and `?preview=recipient` fixtures are unreachable when Vite replaces the development guard in a production build.
+Requirements used by the project:
 
-The first exact-wallet browser onboarding is now finalized on Devnet. Phantom approved separate legacy bootstrap and delegation transactions after each passed app-side preflight; 1 Circle Devnet test USDC moved from the connected wallet into the vault, the vault became exactly 4 USDC collateralized, the private balance reads 1 USDC, and both the Deposit and Permission accounts are owned by MagicBlock's Delegation Program. The split flow is retry-safe: a confirmed bootstrap is detected before any retry can deposit the requested amount twice.
+- Node.js 24
+- npm
+- Rust/Cargo
+- Solana CLI 4.0.1
+- Anchor CLI 1.0.2
 
-The first version-2.2 browser Payment also completed its unattended expiry path. After the original browser and in-memory session signer disappeared, a fresh bounded session recovered the same Payment from authoritative private state as `Expired`. A session-signed claim returned the sender's protected balance from 0 to 1 test USDC without a Phantom transaction prompt, while the public vault remained unchanged at 4 USDC. The client now captures sanitized per-wallet receipts for private actions and exposes them in Activity and Technical proof without retaining session keys, authentication tokens, or plaintext notes. A fresh `0.01` test-USDC protected-payment/Undo round trip exercised that path end to end: the displayed private balance moved `1 -> 0.99 -> 1`, both activity receipts persisted, private Undo signature `kLoqrc…Pwrdf` finalized without error at Private ER slot `303508074`, and public custody remained unchanged at 4 USDC.
+Install and run:
 
-That round trip's bounded Session Token was then explicitly revoked in finalized Devnet transaction `4tHz2r…oDCTx` at slot `496542267`. The token account closed, `0.0012192 SOL` rent returned to the connected wallet before the `0.00008 SOL` fee, the client erased the in-memory signer, and the protected balance became masked. An unsigned, non-broadcast Private ER simulation referencing the closed token was rejected by the session constraint with Anchor `AccountNotInitialized (3012)`; no signer secret was reconstructed or persisted for the denial check.
+```bash
+npm ci
+cp .env.example .env
+npm run dev:web -- --host 127.0.0.1 --port 4173
+```
 
-Live browser-wallet evidence across the rejected, disconnected, delayed, expired-authentication, correct-payment, and recovery paths remains before submission. The local recovery harness verifies categorization, duplicate-tab exclusion, exact shared-checkpoint recovery, stale-lease takeover, and absence of plaintext notes, but it does not fabricate a successful wallet or network outcome.
+Open `http://127.0.0.1:4173`.
 
-Cross-tab recovery stores the resumable operation in this browser profile's `localStorage`. That checkpoint includes sender, recipient, amount, Payment identity, encrypted memo envelope, memo commitment, and prepared transaction signatures; it contains no wallet key or plaintext memo and is cleared after receipt reconstruction. This is device-local crash recovery, not protection against malicious scripts or someone with access to the same browser profile.
+No wallet seed phrase or private key belongs in `.env`, the browser app, the repository, or an issue. Private ER authorization is obtained at runtime through the wallet challenge flow.
 
-Balance management reproduces the proven two-stage path: a 320-byte private commit/undelegation transaction followed by a 737-byte public top-up-or-withdrawal plus re-delegation transaction. The browser saves the reviewed starting and target balances plus each prepared signature before broadcast. A retry reconciles signature lifetime, account owner, exact balance, locked value, wallet, mint, and account layout; pending, expected, or unexpected state is never blindly resent. Balance-management privacy is disclosed separately because the aggregate committed snapshot and custody mutation are public.
+## Verification
 
-Run the interface with `npm run dev:web`, validate it with `npm run typecheck:web`, and produce the optimized client with `npm run build:web`.
+Fast local checks:
 
-## Source layout
+```bash
+npm run typecheck
+npm run build:web
+npm run p5:verify:frontend-recovery
+npm run p5:verify:payment-receipts
+npm run p5:verify:session-keys
+cargo test --locked -p protected-pay --lib
+```
 
-- `programs/protected-pay`: clean-room Anchor program
-- `clients/ts`: generated TypeScript client for the deployed program
-- `scripts`: guarded simulation, transaction, verification, and privacy-audit runners
-- `context`: product, ecosystem, prior-art, requirements, and implementation research
-- `artifacts/feasibility`: reproducible evidence for each technical gate
-- `src`: React product interface and private-balance session hook
-- `context/design`: generated visual concepts and the implementation UI specification
+The guarded scripts in `scripts/` separate unsigned preflight, signed simulation, and broadcast approval. Do not run a `send` script without reviewing its exact scenario and approval flags.
 
-The Devnet program ID is `w1ufT3tzJmo6AwLPUV67qXHGTCzUypT7B8RdHATYDGk`. Its private deployment key is generated under ignored `target/deploy/` and must never be committed or displayed.
+Transaction-backed evidence is indexed in [`artifacts/feasibility`](artifacts/feasibility/README.md). The live browser sequence is recorded in [`artifacts/ui/p5-live-browser-wallet-checklist.md`](artifacts/ui/p5-live-browser-wallet-checklist.md).
 
-See [`context/protected-pay-build-plan.md`](context/protected-pay-build-plan.md) for the current roadmap and [`artifacts/feasibility/`](artifacts/feasibility/) for transaction-backed evidence.
+## Privacy and security boundaries
+
+- Private while pending means access-controlled inside MagicBlock's authenticated Private ER—not anonymous, mainnet-private, or permanently secret.
+- Wallet addresses, payment identity, token mint, permissions, delegation metadata, validator, and timing are public.
+- Browser recovery data is local to one browser profile and is not a defense against malicious scripts or local device access.
+- Optional notes are encrypted into the recipient link; anyone holding the complete link can access its note key.
+- Session signers remain in memory, are scoped to this program for one hour, and can be explicitly revoked.
+- Test assets only; no fiat settlement, Resolva partnership, multi-token support, audit claim, or mainnet-readiness claim.
+
+## Repository layout
+
+| Path | Purpose |
+| --- | --- |
+| `programs/protected-pay` | Anchor program and state machine |
+| `clients/ts` | Generated TypeScript client |
+| `src` | React/Vite sender and recipient product |
+| `scripts` | Guarded Devnet/Private ER simulation and verification runners |
+| `artifacts/feasibility` | Transaction-backed technical evidence |
+| `artifacts/ui` | Browser-wallet evidence and reference captures |
+| `context` | Product research, PRD, technical specification, and build plan |
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
