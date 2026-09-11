@@ -116,6 +116,7 @@
     "p5:verify:revoked-session-denial": "tsx scripts/p5-verify-revoked-session-denial.ts",
     "p5:verify:private-client-wrapper": "tsx scripts/p5-verify-private-client-wrapper.ts",
     "p5:verify:payment-receipts": "tsx scripts/p5-verify-payment-receipts.ts",
+    "p5:fund:recipient-sol": "tsx scripts/p5-fund-recipient-sol.ts",
     "p5:auth:simulate:balance-return": "tsx scripts/p5-auth-simulate-balance-return.ts --approved-p5-balance-return-tee-simulation",
     "p4:legacy:diagnose:expired-schedule": "tsx scripts/p4-auth-simulate-expired-schedule.ts --approved-p4-tee-auth-expired-schedule-simulation",
     "p4:auth:simulate:expired-cancel": "tsx scripts/p4-auth-simulate-expired-cancel.ts --approved-p4-tee-auth-expired-cancel-simulation",
