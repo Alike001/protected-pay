@@ -442,6 +442,12 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
   async function confirmUndo() {
     const paymentAddress = receipt?.payment ?? livePayment.paymentAddress;
     if (preview || !paymentAddress || !connected?.signer || !walletAddress || !privateBalance.privateClient) return;
+    const recoveredAmount = livePayment.payment && !livePayment.payment.redacted
+      ? livePayment.payment.amount
+      : parseUsdc(activeAmount);
+    const expectedAvailable = privateBalance.balance
+      ? privateBalance.balance.available + recoveredAmount
+      : undefined;
     setCanceling(true);
     setCancelError(null);
     try {
@@ -460,7 +466,10 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
           wallet: walletAddress,
         });
       }
-      await privateBalance.refresh();
+      // A confirmed Private ER transaction can become visible to an account
+      // read a moment later. Wait for the atomic cancellation credit instead
+      // of freezing the first briefly stale balance response in the UI.
+      await privateBalance.refresh(expectedAvailable);
       setReceipt(null);
       setSavedPayment(null);
       try { localStorage.removeItem(`protected-pay:last-payment:${walletAddress}`); } catch { /* persistence is best effort */ }

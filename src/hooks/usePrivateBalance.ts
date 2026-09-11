@@ -29,6 +29,8 @@ export type BalanceState = {
 type ChallengeResponse = { challenge?: unknown; error?: unknown };
 type LoginResponse = { token?: unknown; error?: unknown };
 const MAX_CHALLENGE_AGE_SECONDS = 300;
+const BALANCE_SYNC_ATTEMPTS = 20;
+const BALANCE_SYNC_DELAY_MS = 500;
 
 function decodeAccountData(value: [string, "base64"] | readonly [string, "base64"]) {
   return getBase64Encoder().encode(value[0]);
@@ -190,17 +192,29 @@ export function usePrivateBalance(client: AppClient, walletAddress: string | nul
     return session.privateClient;
   }, [unlockSession]);
 
-  const refresh = useCallback(async () => {
-    if (!authenticatedRpc || !walletAddress) return;
+  const refresh = useCallback(async (minimumAvailable?: bigint) => {
+    if (!authenticatedRpc || !walletAddress) return null;
     setStatus("loading");
     try {
-      await readBalance(authenticatedRpc, walletAddress);
+      let latestBalance = await readBalance(authenticatedRpc, walletAddress);
+      for (
+        let attempt = 1;
+        minimumAvailable !== undefined
+          && latestBalance.available < minimumAvailable
+          && attempt < BALANCE_SYNC_ATTEMPTS;
+        attempt += 1
+      ) {
+        await new Promise((resolve) => window.setTimeout(resolve, BALANCE_SYNC_DELAY_MS));
+        latestBalance = await readBalance(authenticatedRpc, walletAddress);
+      }
       setStatus("ready");
+      return latestBalance;
     } catch (error) {
       setAuthenticatedRpc(null);
       setPrivateClient(null);
       setStatus("error");
       setMessage(errorMessage(error));
+      return null;
     }
   }, [authenticatedRpc, readBalance, walletAddress]);
 
