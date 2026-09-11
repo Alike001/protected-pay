@@ -81,7 +81,7 @@ One blocking evidence gap remains before a full pass: capture a fresh active Pay
 - Run one manual wallet-extension smoke test on the Vercel origin; headless QA cannot exercise Phantom.
 - Independently verify MagicBlock TEE hardware attestation if stronger privacy language is desired.
 - The production JavaScript bundle is approximately 520 kB minified; Vite reports a chunk-size warning, but the route remains functional.
-- Demo video, final screenshots, authenticated deadline check, and Devpost submission are delivery tasks, not missing core transaction behavior.
+- Demo video, final screenshots, authenticated MagicBlock Build portal check, and Blitz submission are delivery tasks, not missing core transaction behavior.
 
 ## Follow-ups
 
