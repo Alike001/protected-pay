@@ -299,7 +299,11 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
   const activeAmount = livePayment.payment ? formatUsdc(livePayment.payment.amount) : amount;
   const activeRecipient = livePayment.payment?.recipient ?? recipient;
   const canUndoActive = Boolean(receipt) || livePayment.payment?.status === PaymentStatus.Created || livePayment.payment?.status === PaymentStatus.Acknowledged;
-  const canRecoverExpired = livePayment.payment?.status === PaymentStatus.Expired && livePayment.payment.sender === walletAddress;
+  const canRecoverExpired = !recovered
+    && livePayment.payment?.status === PaymentStatus.Expired
+    && !livePayment.payment.redacted
+    && livePayment.payment.amount > 0n
+    && livePayment.payment.sender === walletAddress;
 
   async function confirmPayment() {
     if (!connected?.signer || !walletAddress || !paymentRecoveryLoaded || validation) return;
@@ -542,10 +546,10 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
         </section>
       </div>
 
-      {preview ? <ActivePayment onUndo={() => setUndoing(true)} /> : receipt || livePayment.payment ? (
-        <section className="panel confirmed-payment"><span className="icon-tile success">{canRecoverExpired ? <RotateCcw size={19} /> : <Check size={19} />}</span><div><h2>{canRecoverExpired ? "Payment expired safely" : receipt ? "Payment protected" : "Payment restored"}</h2><p>{canRecoverExpired ? "The recipient did not acknowledge in time. Recover the test USDC to your protected balance." : ` ${activeAmount} test USDC to ${shortAddress(activeRecipient, 7)}. Share this private-view link with the intended recipient.`}</p>{recipientLink && <code>{recipientLink}</code>}{cancelError && <p className="workflow-error" role="alert">{cancelError}</p>}</div><div className="confirmed-actions"><button className="secondary-action" onClick={() => recipientLink && navigator.clipboard.writeText(recipientLink)} disabled={!recipientLink}>Copy link</button>{canUndoActive && <button className="undo-button" onClick={() => setUndoing(true)}><RotateCcw size={16} /> Undo</button>}{canRecoverExpired && <button className="undo-button" onClick={recoverExpiredPayment} disabled={canceling}><RotateCcw size={16} /> {canceling ? "Recovering…" : "Recover expired"}</button>}</div></section>
-      ) : recovered ? (
+      {preview ? <ActivePayment onUndo={() => setUndoing(true)} /> : recovered ? (
         <section className="panel confirmed-payment recovered-payment"><span className="icon-tile success"><RotateCcw size={19} /></span><div><h2>Payment recovered</h2><p>The test USDC is back in your protected balance.</p></div></section>
+      ) : receipt || livePayment.payment ? (
+        <section className="panel confirmed-payment"><span className="icon-tile success">{canRecoverExpired ? <RotateCcw size={19} /> : <Check size={19} />}</span><div><h2>{canRecoverExpired ? "Payment expired safely" : receipt ? "Payment protected" : "Payment restored"}</h2><p>{canRecoverExpired ? "The recipient did not acknowledge in time. Recover the test USDC to your protected balance." : ` ${activeAmount} test USDC to ${shortAddress(activeRecipient, 7)}. Share this private-view link with the intended recipient.`}</p>{recipientLink && <code>{recipientLink}</code>}{cancelError && <p className="workflow-error" role="alert">{cancelError}</p>}</div><div className="confirmed-actions"><button className="secondary-action" onClick={() => recipientLink && navigator.clipboard.writeText(recipientLink)} disabled={!recipientLink}>Copy link</button>{canUndoActive && <button className="undo-button" onClick={() => setUndoing(true)}><RotateCcw size={16} /> Undo</button>}{canRecoverExpired && <button className="undo-button" onClick={recoverExpiredPayment} disabled={canceling}><RotateCcw size={16} /> {canceling ? "Recovering…" : "Recover expired"}</button>}</div></section>
       ) : (
         <section className="panel empty-payment"><span className="icon-tile"><Clock3 size={19} /></span><div><h2>No active payment</h2><p>Protected payments that need your attention will appear here.</p></div></section>
       )}
