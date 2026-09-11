@@ -314,6 +314,17 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
     && !livePayment.payment.redacted
     && livePayment.payment.amount > 0n
     && livePayment.payment.sender === walletAddress;
+  const hasCurrentPayment = Boolean(receipt)
+    || Boolean(
+      livePayment.payment
+      && !livePayment.payment.redacted
+      && livePayment.payment.amount > 0n
+      && livePayment.payment.sender === walletAddress,
+    );
+
+  useEffect(() => {
+    if (hasCurrentPayment) setRecovered(false);
+  }, [hasCurrentPayment]);
 
   async function confirmPayment() {
     if (!connected?.signer || !walletAddress || !paymentRecoveryLoaded || validation) return;
@@ -379,6 +390,7 @@ function ActivePayment({ onUndo }: { onUndo: () => void }) {
         role: "sender",
         wallet: walletAddress,
       });
+      setRecovered(false);
       setReceipt(result);
       const saved = { paymentReference: result.paymentReference, memoEnvelope: result.memoEnvelope, sender: walletAddress } satisfies SavedPayment;
       setSavedPayment(saved);

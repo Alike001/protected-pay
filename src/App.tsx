@@ -1,9 +1,10 @@
-import { Activity, ArrowLeftRight, LayoutDashboard, Send, Settings, ShieldCheck } from "lucide-react";
+import { Activity, ArrowLeftRight, LayoutDashboard, Send, Settings as SettingsIcon, ShieldCheck } from "lucide-react";
 import { useClient } from "@solana/react";
 import { useConnectedWallet } from "@solana/kit-plugin-wallet/react";
 import { useState } from "react";
 import { BrandMark } from "./components/BrandMark";
 import { ProofDrawer } from "./components/ProofDrawer";
+import { SettingsDrawer } from "./components/SettingsDrawer";
 import { WalletControl } from "./components/WalletControl";
 import { LandingPage } from "./features/landing/LandingPage";
 import { RecipientPayment } from "./features/recipient/RecipientPayment";
@@ -36,6 +37,7 @@ export default function App() {
   const connected = useConnectedWallet(client);
   const walletAddress = connected?.account.address ?? null;
   const [proofOpen, setProofOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const preview = getPreviewMode();
   const recoveryPreview = getRecoveryPreview();
   const paymentReference = new URLSearchParams(window.location.search).get("payment");
@@ -61,7 +63,7 @@ export default function App() {
         </nav>
         <div className="sidebar-bottom">
           <a href="#proof" onClick={(event) => { event.preventDefault(); setProofOpen(true); }}><ShieldCheck size={18} /> Proof</a>
-          <a href="#settings"><Settings size={18} /> Settings</a>
+          <a href="#settings" onClick={(event) => { event.preventDefault(); setSettingsOpen(true); }}><SettingsIcon size={18} /> Settings</a>
           <div className="network-chip"><span /> Solana Devnet</div>
         </div>
       </aside>
@@ -70,6 +72,7 @@ export default function App() {
         <SenderDashboard preview={preview === "sender"} previewIssue={recoveryPreview} onShowProof={() => setProofOpen(true)} />
       </div>
       <ProofDrawer open={proofOpen} onClose={() => setProofOpen(false)} walletAddress={receiptWallet} />
+      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} walletAddress={receiptWallet} />
     </div>
   );
 }
