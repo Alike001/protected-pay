@@ -2,6 +2,7 @@ import {
   address,
   createClient,
   createSolanaRpc,
+  extendClient,
   getBase58Decoder,
   getBase64Encoder,
   type Address,
@@ -33,17 +34,17 @@ function decodeAccountData(value: [string, "base64"] | readonly [string, "base64
   return getBase64Encoder().encode(value[0]);
 }
 
-function createPrivateClient(
+export function createPrivateClient(
   transactionSigner: TransactionSigner,
   rpcUrl: string,
   authority: Address,
   sessionToken: Address,
   sessionExpiresAt: number,
 ) {
-  return Object.assign(
-    createClient().use(signerPlugin(transactionSigner)).use(solanaRpc({ rpcUrl })),
-    { authority, sessionExpiresAt, sessionToken },
-  );
+  const client = createClient()
+    .use(signerPlugin(transactionSigner))
+    .use(solanaRpc({ rpcUrl }));
+  return extendClient(client, { authority, sessionExpiresAt, sessionToken });
 }
 
 export type PrivateClient = ReturnType<typeof createPrivateClient>;
