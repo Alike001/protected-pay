@@ -32,6 +32,11 @@ function getRecoveryPreview(): WorkflowIssue | null {
   return null;
 }
 
+function getWrongWalletPreview() {
+  if (!import.meta.env.DEV) return false;
+  return new URLSearchParams(window.location.search).get("recovery") === "wrong-wallet";
+}
+
 export default function App() {
   const client = useClient<AppClient>();
   const connected = useConnectedWallet(client);
@@ -40,6 +45,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(() => window.location.hash === "#settings");
   const preview = getPreviewMode();
   const recoveryPreview = getRecoveryPreview();
+  const wrongWalletPreview = getWrongWalletPreview();
   const paymentReference = new URLSearchParams(window.location.search).get("payment");
   const pathname = window.location.pathname.replace(/\/+$/, "") || "/";
   const receiptWallet = preview === "sender" ? PREVIEW_WALLET : walletAddress;
@@ -62,7 +68,7 @@ export default function App() {
   };
 
   if (preview === "recipient" || paymentReference || pathname === "/pay") {
-    return <><RecipientPayment preview={preview === "recipient"} paymentReference={paymentReference} onShowProof={() => setProofOpen(true)} /><ProofDrawer open={proofOpen} onClose={() => setProofOpen(false)} walletAddress={receiptWallet} /></>;
+    return <><RecipientPayment preview={preview === "recipient"} wrongWalletPreview={wrongWalletPreview} paymentReference={paymentReference} onShowProof={() => setProofOpen(true)} /><ProofDrawer open={proofOpen} onClose={() => setProofOpen(false)} walletAddress={receiptWallet} /></>;
   }
 
   if (preview !== "sender" && pathname !== "/app") {

@@ -6,6 +6,7 @@
 /dist/
 /coverage/
 /.playwright-mcp/
+/.vercel/
 
 # Local keys and environment values must never be committed.
 *.json.keypair
