@@ -1,4 +1,4 @@
-import { Activity, ArrowLeftRight, LayoutDashboard, Send, Settings as SettingsIcon, ShieldCheck } from "lucide-react";
+import { Activity, ArrowLeft, ArrowLeftRight, LayoutDashboard, Send, Settings as SettingsIcon, ShieldCheck } from "lucide-react";
 import { useClient } from "@solana/react";
 import { useConnectedWallet } from "@solana/kit-plugin-wallet/react";
 import { useEffect, useState } from "react";
@@ -91,7 +91,12 @@ export default function App() {
         </div>
       </aside>
       <div className="app-content">
-        <header className="topbar"><div className="mobile-brand"><BrandMark /></div><span className="network-note"><ArrowLeftRight size={14} /> Private safety window</span><WalletControl /></header>
+        <header className="topbar">
+          <div className="mobile-brand"><BrandMark /></div>
+          <a className="topbar-home" href="/"><ArrowLeft size={15} /> Back to home</a>
+          <span className="network-note"><ArrowLeftRight size={14} /> Private safety window</span>
+          <WalletControl />
+        </header>
         <SenderDashboard preview={preview === "sender"} previewIssue={recoveryPreview} onShowProof={() => setProofOpen(true)} />
       </div>
       <ProofDrawer open={proofOpen} onClose={() => setProofOpen(false)} walletAddress={receiptWallet} />

@@ -1,7 +1,7 @@
 :root {
   color: #071735;
   background: #fff;
-  font-family: Inter, "Avenir Next", "Segoe UI", sans-serif;
+  font-family: "Avenir Next", Lato, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   --ink: #071735;
@@ -30,8 +30,11 @@ h1, h2, p { margin-top: 0; }
 .brand-mark, .icon-tile { display: inline-grid; place-items: center; width: 34px; height: 34px; color: var(--violet); border-radius: 10px; background: var(--violet-soft); flex: 0 0 auto; }
 .icon-tile.large { width: 48px; height: 48px; border-radius: 14px; }
 .sidebar nav { display: grid; gap: 5px; margin-top: 44px; }
-.sidebar a { display: flex; align-items: center; gap: 11px; padding: 11px 12px; color: var(--muted); border-radius: 10px; font-size: 14px; font-weight: 650; }
-.sidebar a:hover, .sidebar a.active { color: var(--violet); background: var(--violet-soft); }
+.sidebar nav a, .sidebar-bottom a { display: flex; align-items: center; gap: 11px; padding: 11px 12px; color: var(--muted); border-radius: 10px; font-size: 14px; font-weight: 650; }
+.sidebar nav a:hover, .sidebar nav a.active, .sidebar-bottom a:hover { color: var(--violet); background: var(--violet-soft); }
+.brand-home-link { width: fit-content; border-radius: 10px; outline-offset: 4px; }
+.brand-home-link:hover .brand-mark { transform: translateY(-1px); box-shadow: 0 7px 16px rgba(48, 39, 135, .12); }
+.brand-mark { transition: transform 180ms ease, box-shadow 180ms ease; }
 .sidebar-bottom { margin-top: auto; display: grid; gap: 4px; }
 .network-chip { margin: 20px 10px 0; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
 .network-chip span, .wallet-dot { width: 8px; height: 8px; background: var(--emerald); border-radius: 99px; box-shadow: 0 0 0 3px rgba(15,179,109,.12); }
@@ -39,6 +42,10 @@ h1, h2, p { margin-top: 0; }
 .topbar { height: 74px; display: flex; align-items: center; justify-content: flex-end; gap: 18px; padding: 0 40px; border-bottom: 1px solid var(--border); }
 .mobile-brand { display: none; }
 .network-note { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; }
+.topbar-home, .recipient-home { min-height: 38px; display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; font-weight: 700; transition: color 160ms ease, transform 160ms ease; }
+.topbar-home { margin-right: auto; }
+.topbar-home:hover, .recipient-home:hover { color: var(--violet); transform: translateX(-2px); }
+.recipient-header-actions { display: flex; align-items: center; gap: 18px; }
 
 .wallet-menu-wrap { position: relative; }
 .wallet-button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 15px; border: 1px solid var(--border); border-radius: 10px; background: #fff; font-size: 14px; font-weight: 700; cursor: pointer; }
@@ -263,6 +270,7 @@ dd { margin: 0; text-align: right; font-size: 13px; font-weight: 700; overflow-w
   .app-content { display: block; }
   .topbar { height: 66px; padding: 0 20px; justify-content: space-between; }
   .mobile-brand { display: block; }
+  .topbar-home { display: none; }
   .network-note { display: none; }
   .dashboard-main { padding: 34px 20px 25px; }
   .page-heading { display: block; margin-bottom: 27px; }
@@ -287,6 +295,9 @@ dd { margin: 0; text-align: right; font-size: 13px; font-weight: 700; overflow-w
   .activity-row > strong { text-align: right; }
   .disclosure { flex-direction: column; align-items: center; }
   .recipient-header { padding: 0 16px; }
+  .recipient-home { font-size: 0; }
+  .recipient-home svg { width: 18px; height: 18px; }
+  .recipient-header-actions { gap: 11px; }
   .recipient-header .wallet-button { font-size: 0; width: 42px; padding: 0; }
   .recipient-header .wallet-button svg { margin: 0; }
   .recipient-main { padding-top: 30px; }

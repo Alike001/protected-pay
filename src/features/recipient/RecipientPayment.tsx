@@ -1,4 +1,4 @@
-import { Check, Clock3, FileText, LockKeyhole, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Check, Clock3, FileText, LockKeyhole, ShieldCheck } from "lucide-react";
 import { useClient } from "@solana/react";
 import { useConnectedWallet } from "@solana/kit-plugin-wallet/react";
 import { useEffect, useMemo, useState } from "react";
@@ -148,7 +148,13 @@ export function RecipientPayment({ preview, wrongWalletPreview = false, paymentR
 
   return (
     <div className="recipient-page">
-      <header className="recipient-header"><BrandMark /><WalletControl /></header>
+      <header className="recipient-header">
+        <BrandMark />
+        <div className="recipient-header-actions">
+          <a className="recipient-home" href="/"><ArrowLeft size={15} /> Back home</a>
+          <WalletControl />
+        </div>
+      </header>
       <main className="recipient-main">
         <div className="recipient-intro"><span className="icon-tile large"><ShieldCheck size={24} /></span><div><h1>{claimedReceipt ? "Payment claimed" : "Payment waiting for you"}</h1><p>{claimedReceipt ? "The test USDC is now in your protected balance." : "Connect the intended wallet to view and acknowledge this test payment."}</p></div></div>
 

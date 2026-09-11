@@ -10,6 +10,7 @@ import {
   RefreshCcw,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
   WalletCards,
   type LucideIcon,
 } from "lucide-react";
@@ -62,6 +63,13 @@ const infrastructure = [
   { icon: LockKeyhole, title: "Private ER", copy: "Pending logic runs privately." },
   { icon: Clock3, title: "Crank timing", copy: "Deadlines progress automatically." },
   { icon: FileCheck2, title: "Solana settlement", copy: "Final state returns onchain." },
+] as const;
+
+const buildProof = [
+  { value: "23", label: "program tests" },
+  { value: "6", label: "autonomous deadline checks" },
+  { value: "1 hr", label: "bounded session" },
+  { value: "v2.2", label: "live Devnet program" },
 ] as const;
 
 function SafetyWindowDemo() {
@@ -125,7 +133,7 @@ export function LandingPage({ onShowProof }: LandingPageProps) {
   return (
     <div className="landing">
       <header className="landing-nav">
-        <a className="landing-brand-link" href="/" aria-label="Protected Pay home"><BrandMark /></a>
+        <BrandMark />
         <nav aria-label="Landing page">
           <a href="#how-it-works">How it works</a>
           <a href="#privacy">Privacy</a>
@@ -137,25 +145,36 @@ export function LandingPage({ onShowProof }: LandingPageProps) {
       <main>
         <section className="landing-hero">
           <div className="landing-hero-copy">
-            <h1>Send USDC.<br />Fix mistakes before they become final.</h1>
-            <p>Protected Pay gives every payment a private safety window. The right recipient acknowledges; you can undo a mistake before settlement.</p>
+            <span className="landing-eyebrow"><Sparkles size={14} /> Protected payments on Solana Devnet</span>
+            <h1>Send USDC.<br /><em>Undo it before settlement.</em></h1>
+            <p>Protected Pay adds a private safety window between send and settle. The intended recipient confirms the wallet; you stay in control until the deadline.</p>
             <div className="landing-actions">
-              <a className="landing-button primary" href="/app">Open Devnet app <ArrowRight size={16} /></a>
-              <a className="landing-button secondary" href="#how-it-works"><Play size={15} /> See how it works</a>
+              <a className="landing-button primary" href="/app">Try the live Devnet app <ArrowRight size={16} /></a>
+              <a className="landing-button secondary" href="#how-it-works"><Play size={15} /> See the flow</a>
             </div>
+            <div className="landing-hero-note"><ShieldCheck size={15} /><span>Test USDC only. Program-enforced recovery, not a browser timer.</span></div>
           </div>
           <SafetyWindowDemo />
         </section>
 
+        <section className="landing-proof-rail" aria-label="Verified build facts">
+          <p><span /> Running on Devnet</p>
+          <dl>
+            {buildProof.map((item) => <div key={item.label}><dt>{item.value}</dt><dd>{item.label}</dd></div>)}
+          </dl>
+          <button type="button" onClick={onShowProof}>Inspect proof <ArrowRight size={14} /></button>
+        </section>
+
         <section className="landing-section landing-how" id="how-it-works">
-          <div className="landing-section-title">
-            <h2>How it works</h2>
-            <p>Simple, private, and safer payments.</p>
+          <div className="landing-side-title">
+            <span className="landing-kicker">The payment flow</span>
+            <h2>One clear window between send and final.</h2>
+            <p>Each step has one job. The recipient confirms. The network advances the deadline. The sender can recover a mistake in time.</p>
           </div>
           <ol className="landing-steps">
             {steps.map((step, index) => (
               <li key={step.title}>
-                <span>{index + 1}</span>
+                <span>0{index + 1}</span>
                 <div><h3>{step.title}</h3><p>{step.copy}</p></div>
               </li>
             ))}
@@ -164,9 +183,10 @@ export function LandingPage({ onShowProof }: LandingPageProps) {
 
         <section className="landing-section landing-mistake">
           <div className="landing-mistake-copy">
-            <h2>Wrong wallet?</h2>
-            <p className="landing-lead">Recover it during the safety window—without asking a stranger to send it back.</p>
-            <p>We have all made mistakes. Protected Pay gives you a private window to undo an incorrect transfer, so your funds can be recovered safely.</p>
+            <span className="landing-kicker">The reason it exists</span>
+            <h2>Wrong wallet? Bring it back.</h2>
+            <p className="landing-lead">Recover during the safety window—without asking a stranger to return the funds.</p>
+            <p>The cancellation is part of the payment state machine. If the recipient does not acknowledge in time, the sender can recover after expiry too.</p>
           </div>
           <div className="landing-return-visual" aria-label="A mistaken payment returning to its sender">
             <article>
@@ -189,8 +209,9 @@ export function LandingPage({ onShowProof }: LandingPageProps) {
 
         <section className="landing-section landing-control">
           <div className="landing-side-title">
-            <h2>Your control, always</h2>
-            <p>Simple tools to keep your funds safe.</p>
+            <span className="landing-kicker">Recovery, built in</span>
+            <h2>Three safe paths when plans change.</h2>
+            <p>The product checks authoritative state before it signs again, so interrupted work can resume without blindly sending a duplicate.</p>
           </div>
           <div className="landing-control-list">
             {controls.map(({ icon: Icon, title, copy, tone }) => (
@@ -204,8 +225,8 @@ export function LandingPage({ onShowProof }: LandingPageProps) {
 
         <section className="landing-section landing-privacy" id="privacy">
           <div className="landing-section-title">
-            <div><h2>Privacy by design</h2><p>Your payment details stay private while the decision is still live.</p></div>
-            <span>Transparent where it matters.</span>
+            <div><span className="landing-kicker">A precise privacy boundary</span><h2>Private while pending. Verifiable at the edges.</h2><p>Protected Pay says exactly what is hidden and what remains public.</p></div>
+            <span>Clear claims. Inspectable proof.</span>
           </div>
           <div className="landing-privacy-grid">
             <PrivacyColumn
@@ -225,7 +246,7 @@ export function LandingPage({ onShowProof }: LandingPageProps) {
 
         <section className="landing-section landing-magic">
           <div className="landing-section-title">
-            <div><h2>Powered by MagicBlock</h2><p>The infrastructure for private, programmable money.</p></div>
+            <div><span className="landing-kicker">Under the hood</span><h2>From Solana custody to private execution—and back.</h2><p>MagicBlock runs the live payment logic while Solana keeps the custody and settlement boundary inspectable.</p></div>
           </div>
           <ol>
             {infrastructure.map(({ icon: Icon, title, copy }, index) => (
@@ -240,17 +261,18 @@ export function LandingPage({ onShowProof }: LandingPageProps) {
 
         <section className="landing-proof" id="proof">
           <div>
-            <h2>Verified on Devnet</h2>
-            <p>Open, inspectable, and built for what comes next.</p>
+            <span className="landing-kicker">Built, deployed, exercised</span>
+            <h2>See the proof, then try the product.</h2>
+            <p>The program, public settlement transaction, test suite, and live app are available now.</p>
           </div>
           <dl>
-            <div><dt>Program</dt><dd>Protected Pay</dd></div>
             <div><dt>Network</dt><dd>Solana Devnet</dd></div>
-            <div><dt>Private runtime</dt><dd>MagicBlock TEE</dd></div>
+            <div><dt>Runtime</dt><dd>MagicBlock Private ER</dd></div>
+            <div><dt>Program</dt><dd>w1ufT3…ATYDGk</dd></div>
           </dl>
           <div className="landing-proof-actions">
             <a className="landing-proof-app" href="/app">
-              Open Devnet app <ArrowRight size={15} />
+              Open live app <ArrowRight size={15} />
             </a>
             <a
               className="landing-proof-transaction"
@@ -259,6 +281,14 @@ export function LandingPage({ onShowProof }: LandingPageProps) {
               rel="noreferrer"
             >
               View verified transaction <ExternalLink size={15} />
+            </a>
+            <a
+              className="landing-proof-repo"
+              href="https://github.com/Alike001/protected-pay"
+              target="_blank"
+              rel="noreferrer"
+            >
+              View source <ExternalLink size={15} />
             </a>
           </div>
         </section>
@@ -270,7 +300,7 @@ export function LandingPage({ onShowProof }: LandingPageProps) {
           <p>Safer USDC transfers with a private recovery window.</p>
         </div>
         <div className="landing-footer-note">
-          <span>Built on Solana Devnet with MagicBlock.</span>
+          <div><a href="#how-it-works">How it works</a><button type="button" onClick={onShowProof}>Proof</button><a href="/app">Open app</a></div>
           <small>Hackathon prototype · Test USDC only · Not for real funds.</small>
         </div>
       </footer>
