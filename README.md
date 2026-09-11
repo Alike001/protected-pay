@@ -6,6 +6,8 @@ Protected Pay lets a sender place test USDC into per-payment escrow, share a pri
 
 > Devnet demonstration only. Circle Devnet USDC has no financial value. This code is not audited or production-ready.
 
+**Live demo:** [protected-pay-azure.vercel.app](https://protected-pay-azure.vercel.app)
+
 ## Why it exists
 
 Ordinary crypto transfers become difficult or impossible to reverse once broadcast. Protected Pay adds a short, program-enforced safety period while keeping the amount, note commitment, live status, deadlines, task identifier, and aggregate balances inside MagicBlock's authenticated Private ER while the payment is pending.
@@ -15,6 +17,7 @@ The project deliberately does **not** claim anonymous or permanently secret paym
 ## Live build status
 
 - Anchor program version 2.2 is deployed on Solana Devnet.
+- The production web client is deployed on Vercel with direct `/app` and `/pay` SPA routes.
 - Real Circle Devnet USDC funding, delegation, withdrawal, protected send, sender Undo, unattended expiry/recovery, recipient acknowledgement, unattended settlement, and recipient claim have run through the browser product.
 - One-hour MagicBlock Session Tokens scope an in-memory signer to Protected Pay. Wallet keys, authentication tokens, session signers, and plaintext notes are never stored in browser receipts.
 - Retry-safe checkpoints reconcile prepared signatures and authoritative state before any resend.
@@ -99,6 +102,8 @@ cargo test --locked -p protected-pay --lib
 The guarded scripts in `scripts/` separate unsigned preflight, signed simulation, and broadcast approval. Do not run a `send` script without reviewing its exact scenario and approval flags.
 
 Transaction-backed evidence is indexed in [`artifacts/feasibility`](artifacts/feasibility/README.md). The live browser sequence is recorded in [`artifacts/ui/p5-live-browser-wallet-checklist.md`](artifacts/ui/p5-live-browser-wallet-checklist.md).
+
+The current requirement traceability verdict is recorded in [`artifacts/verification/final-verification-audit.md`](artifacts/verification/final-verification-audit.md).
 
 ## Privacy and security boundaries
 
