@@ -6,7 +6,9 @@ Protected Pay lets a sender place test USDC into per-payment escrow, share a pri
 
 > Devnet demonstration only. Circle Devnet USDC has no financial value. This code is not audited or production-ready.
 
-**Live demo:** [protected-pay-azure.vercel.app](https://protected-pay-azure.vercel.app)
+**Live app:** [protected-pay-azure.vercel.app](https://protected-pay-azure.vercel.app) · **Video demo:** [Watch on YouTube](https://youtu.be/8cHFXfzUb-Y)
+
+![Protected Pay sender dashboard on Solana Devnet](fresh-server-preflight-qa.png)
 
 ## Why it exists
 
